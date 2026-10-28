@@ -1,0 +1,50 @@
+[
+  {
+    "name": "DTC SaaS — ProjectFlow launch",
+    "tenant_id": "tenant_acme_saas",
+    "days_live": 14,
+    "avg_conversion_value": 480.0,
+    "brief": {
+      "product_name": "ProjectFlow",
+      "product_description": "Asana/ClickUp alternative for fast-moving dev teams. Tight GitHub + Linear integrations, instant sprint burndowns, AI-assisted standup summaries.",
+      "target_audience": "Engineering managers and tech leads at 50-500 person SaaS companies in North America.",
+      "budget_usd": 25000.0,
+      "duration_days": 30,
+      "business_objective": "conversion",
+      "channels_hint": ["google", "linkedin"],
+      "constraints": ["No comparison-brand keyword bidding", "Must comply with LinkedIn professional audience policy"]
+    }
+  },
+  {
+    "name": "Local Restaurant — Bloom Bistro weekend promo",
+    "tenant_id": "tenant_bloom_bistro",
+    "days_live": 7,
+    "avg_conversion_value": 42.0,
+    "brief": {
+      "product_name": "Bloom Bistro weekend tasting menu",
+      "product_description": "Five-course seasonal tasting menu available Friday-Sunday only. $85/person, includes paired house wines.",
+      "target_audience": "Food enthusiasts within 25 miles of downtown Portland, aged 28-55, household income $80k+.",
+      "budget_usd": 1500.0,
+      "duration_days": 7,
+      "business_objective": "conversion",
+      "channels_hint": ["meta", "google"],
+      "constraints": ["Geo-fenced to Portland metro", "No alcohol-specific targeting per OR state law"]
+    }
+  },
+  {
+    "name": "E-commerce — VertexAudio wireless earbuds launch",
+    "tenant_id": "tenant_vertex_audio",
+    "days_live": 21,
+    "avg_conversion_value": 89.5,
+    "brief": {
+      "product_name": "VertexAudio Air Pro",
+      "product_description": "Premium ANC wireless earbuds with 32-hour battery, wireless charging case, aptX Lossless audio. $179 launch price (MSRP $229).",
+      "target_audience": "Audiophiles + commuters aged 22-45 in US/EU. Cross-target Spotify podcast listeners + Apple Music subscribers.",
+      "budget_usd": 40000.0,
+      "duration_days": 30,
+      "business_objective": "conversion",
+      "channels_hint": ["google", "meta", "tiktok"],
+      "constraints": ["No comparison-brand keyword bidding on Apple/Sony/Bose", "TikTok creative must use licensed music only"]
+    }
+  }
+]

@@ -1,0 +1,4 @@
+# Place your GCP service-account JSON here.
+# Mount as ./creds:/creds:ro in docker-compose.
+# AdForge uses ADC (Application Default Credentials) for the official
+# googleads/google-ads-mcp server — see docs/RESEARCH.md.

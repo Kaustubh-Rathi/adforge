@@ -1,0 +1,56 @@
+# AdForge default compliance ruleset
+# Tier 1 = hard block (creative cannot go live)
+# Tier 2 = require disclosure (creative is allowed only with appended disclaimer)
+# Tier 3 = soft warning (agent should reconsider, but allowed)
+
+rules:
+  # --- Tier 1: prohibited content (hard block) ---
+  - rule_id: BLOCK_TOBACCO
+    tier: 1
+    pattern: "tobacco|cigarette|vape|nicotine"
+    description: "Tobacco / nicotine advertising is prohibited on Google, Meta, LinkedIn, TikTok."
+
+  - rule_id: BLOCK_WEAPON
+    tier: 1
+    pattern: "firearm|ammunition|weapon|handgun|rifle"
+    description: "Weapons advertising is prohibited on all major ad platforms."
+
+  - rule_id: BLOCK_ILLEGAL_DRUGS
+    tier: 1
+    pattern: "cocaine|heroin|methamphetamine|illegal drugs"
+    description: "Illegal drug advertising is prohibited globally."
+
+  - rule_id: BLOCK_ADULT
+    tier: 1
+    pattern: "pornography|explicit sexual|escort service"
+    description: "Adult content is prohibited on most general ad platforms."
+
+  # --- Tier 2: require disclosure ---
+  - rule_id: DISCLOSE_FINANCIAL
+    tier: 2
+    pattern: "guaranteed return|risk-free investment|crypto|get rich|investment opportunity"
+    description: "Financial claims require FTC-mandated disclosure language."
+    required_disclosure: "Investing involves risk. Past performance is not indicative of future results."
+
+  - rule_id: DISCLOSE_HEALTH
+    tier: 2
+    pattern: "treats|cures|medical treatment|prescription"
+    description: "Health treatment claims require FDA disclosure language."
+    required_disclosure: "These statements have not been evaluated by the FDA. This product is not intended to diagnose, treat, cure, or prevent any disease."
+
+  - rule_id: DISCLOSE_AFFILIATE
+    tier: 2
+    pattern: "affiliate link|sponsored post|paid partnership"
+    description: "Paid endorsements require FTC affiliate disclosure."
+    required_disclosure: "#ad — This post contains affiliate links. We may earn a commission."
+
+  # --- Tier 3: soft warnings ---
+  - rule_id: WARN_MIRACLE
+    tier: 3
+    pattern: "miracle|instant results|overnight|get rich quick"
+    description: "Sensational / unrealistic outcome claims. Consider toning down."
+
+  - rule_id: WARN_CLICKBAIT
+    tier: 3
+    pattern: "you won't believe|shocking secret|doctors hate"
+    description: "Clickbait phrasing may underperform on quality-bid platforms."
