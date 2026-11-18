@@ -100,6 +100,12 @@ ignore = ["E501"]
 [tool.ruff.lint.isort]
 known-first-party = ["adforge"]
 
+[tool.ruff.lint.per-file-ignores]
+# Streamlit's legacy multipage nav labels the main page with its filename, so
+# the entrypoint is Overview.py (capital O) on purpose. Renaming it to
+# overview.py would ship a lowercase nav label.
+"adforge/dashboard/Overview.py" = ["N999"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

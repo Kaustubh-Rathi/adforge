@@ -118,6 +118,13 @@ In another:
 make run-dashboard  # http://localhost:8501
 ```
 
+The dashboard is five pages: **Overview** (architecture and the live operations
+board), **Campaigns**, **Agent Traces**, **ROI Calculator** and **Review Queue**.
+All component CSS lives in `adforge/dashboard/theme.py`; pages compose the
+`af_*` helpers instead of shipping page-local `<style>` blocks, and the Mermaid
+diagrams scale to fit their frame. The entrypoint is `Overview.py` so the
+sidebar label reads "Overview" rather than "app".
+
 ### 4. (Or) Boot the whole stack via docker-compose
 
 ```bash

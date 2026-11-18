@@ -10,7 +10,9 @@ from adforge.dashboard import api_client as api
 from adforge.dashboard.theme import (
     af_badge,
     af_caption,
+    af_empty,
     af_metric,
+    af_note,
     af_section,
     inject_css,
     status_color,
@@ -18,31 +20,6 @@ from adforge.dashboard.theme import (
 
 inject_css()
 api.tenant_switcher()
-
-# Page-local styles for the campaign ledger rows (the theme owns everything else).
-st.markdown(
-    """
-    <style>
-    .af-ops-list { display: flex; flex-direction: column; gap: 0.55rem; margin-top: 0.3rem; }
-    .af-ops-row {
-      display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 1.25rem;
-      background: var(--af-surface); border: 1px solid var(--af-border);
-      border-left: 3px solid var(--af-accent); border-radius: 10px;
-      box-shadow: var(--af-shadow); padding: 0.75rem 1.1rem;
-    }
-    .af-ops-name { font-weight: 600; color: var(--af-heading); font-size: 0.92rem; }
-    .af-ops-meta { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.3rem; }
-    .af-ops-id { color: var(--af-muted); font-size: 0.74rem; }
-    .af-ops-figures { display: flex; gap: 1.7rem; text-align: right; }
-    .af-ops-fig-label { font-size: 0.72rem; font-weight: 600; color: var(--af-muted); }
-    .af-ops-fig-value {
-      font-size: 0.98rem; font-weight: 700; color: var(--af-heading);
-      font-variant-numeric: tabular-nums; margin-top: 0.1rem;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
 
 _REVIEW_STATUSES = {"reviewing", "pending", "awaiting_review", "in_review"}
 
@@ -52,22 +29,37 @@ af_caption(f"Tenant: {api.current_tenant()}")
 try:
     campaigns: list[dict[str, Any]] = api.list_campaigns()
 except Exception as e:
-    st.error(f"Failed to load campaigns: {e}")
+    af_note(f"<b>Failed to load campaigns.</b> {html.escape(str(e))}", tone="bad")
     campaigns = []
 
-m1, m2, m3 = st.columns(3)
+m1, m2, m3, m4 = st.columns(4)
 with m1:
     af_metric("Total campaigns", f"{len(campaigns):,}")
 with m2:
     reviewing = sum(1 for c in campaigns if str(c.get("status", "")).lower() in _REVIEW_STATUSES)
     af_metric("Awaiting review", f"{reviewing:,}")
 with m3:
+    approved = sum(
+        1 for c in campaigns if str(c.get("status", "")).strip().lower() == "approved"
+    )
+    af_metric("Approved", f"{approved:,}")
+with m4:
     total_spend = sum(float(c.get("total_spend_usd") or 0.0) for c in campaigns)
     af_metric("Platform spend", f"${total_spend:,.2f}")
 
 
 def _usd(value: Any) -> str:
     return f"${float(value or 0.0):,.2f}"
+
+
+def _campaign_action(status: str) -> str:
+    """Link the row to the next useful page for that status."""
+    if status.strip().lower() in _REVIEW_STATUSES:
+        return (
+            '<a class="af-ops-link" href="/Review_Queue" target="_self">'
+            "Open review &rarr;</a>"
+        )
+    return '<a class="af-ops-link" href="/ROI_Calculator" target="_self">See ROI &rarr;</a>'
 
 
 def _campaign_row(c: dict[str, Any]) -> str:
@@ -82,8 +74,9 @@ def _campaign_row(c: dict[str, Any]) -> str:
         f'<div class="af-ops-row" style="border-left-color:{status_color(status)}">'
         f'<div>'
         f'<div class="af-ops-name">{html.escape(str(c.get("name", "(unnamed)")))}</div>'
-        f'<div class="af-ops-meta">{af_badge(status)}<span class="af-ops-id">{short_id}</span>'
-        f'{created_html}</div>'
+        f'<div class="af-ops-meta">{af_badge(status)}'
+        f'<span class="af-ops-id">id {short_id}</span>'
+        f'{created_html}{_campaign_action(status)}</div>'
         f'</div>'
         f'<div class="af-ops-figures">'
         f'<div><div class="af-ops-fig-label">Spend</div>'
@@ -97,6 +90,7 @@ def _campaign_row(c: dict[str, Any]) -> str:
 
 # --- Create new campaign ---
 with st.expander("Create new campaign", expanded=False), st.form("create_campaign_form"):
+    af_caption("The graph runs on the free Coarena LLM — no paid API key is required.")
     name = st.text_input("Campaign name", value="")
     product_name = st.text_input("Product name")
     product_description = st.text_area("Product description")
@@ -132,7 +126,9 @@ with st.expander("Create new campaign", expanded=False), st.form("create_campaig
             st.success(f"Created campaign: {new_campaign['id']}")
             st.rerun()
         except Exception as e:
-            st.error(f"Failed to create: {e}")
+            af_note(
+                f"<b>Failed to create campaign.</b> {html.escape(str(e))}", tone="bad"
+            )
 
 # --- Campaign ledger ---
 if campaigns:
@@ -147,13 +143,21 @@ if campaigns:
         options=[c["id"] for c in campaigns],
         format_func=lambda cid: next(c["name"] for c in campaigns if c["id"] == cid),
     )
-    if st.button("Run agent graph", type="primary"):
+    run_clicked = st.button("Run agent graph", type="primary")
+    af_caption("Runs the full graph; usually 1–3 minutes on the free LLM.")
+    if run_clicked:
         with st.spinner("Running 7-agent graph... this can take 1-3 minutes."):
             try:
                 result = api.run_campaign(selected_id)
-                st.success("Graph completed!")
-                st.json(result.get("final_state", {}))
+                af_note("<b>Graph completed.</b> Campaign status and traces are updated.")
+                with st.expander("Final graph state", expanded=False):
+                    st.json(result.get("final_state", {}))
             except Exception as e:
-                st.error(f"Run failed: {e}")
+                af_note(f"<b>Run failed.</b> {html.escape(str(e))}", tone="bad")
 else:
-    st.info("No campaigns yet. Create one above, or run `make seed` to load the 3 example campaigns.")
+    af_empty(
+        "No campaigns in this tenant",
+        "Create a brief above, or load the three seeded demo campaigns.",
+        hint="make seed",
+    )
+    st.stop()

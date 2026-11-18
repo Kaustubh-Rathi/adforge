@@ -1,4 +1,4 @@
-"""AdForge Streamlit dashboard — home page.
+"""AdForge Streamlit dashboard — overview page.
 
 Layout: ink masthead, live operations board (four figures), "how it works"
 definition rows, then the three architecture diagrams with the agent pipeline
@@ -24,10 +24,10 @@ from adforge.dashboard.theme import (
 )
 
 st.set_page_config(
-    page_title="AdForge",
+    page_title="AdForge Overview",
     page_icon=":money_with_wings:",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 inject_css()
@@ -201,23 +201,34 @@ with how3:
 # --------------------------------------------------------------------------- #
 # Architecture diagrams
 # --------------------------------------------------------------------------- #
-_PIPELINE = """flowchart LR
-    RS["fa:fa-magnifying-glass research<br/>market + audience scan"]
-    CR["fa:fa-palette creative_strategist<br/>concept + copy"]
-    MP["fa:fa-bullhorn media_planner<br/>channels + budget split"]
-    CO["fa:fa-shield-halved compliance<br/>policy verdict"]
-    HR{fa:fa-user-check human_review<br/>HITL gate - interrupt}
-    KP["fa:fa-chart-line kpi_analytics<br/>snapshots + aggregates"]
-    RO["fa:fa-coins roi_calculator<br/>blended ROI + payback"]
-    OP["fa:fa-arrows-rotate optimization<br/>up to 3 actions"]
-    VR["fa:fa-scale-balanced was it worth it?<br/>ROI verdict"]
+_PIPELINE = """flowchart TB
+    subgraph PLAN["Plan and build"]
+        direction LR
+        RS["fa:fa-magnifying-glass research<br/>market + audience scan"]
+        CR["fa:fa-palette creative_strategist<br/>concept + copy"]
+        MP["fa:fa-bullhorn media_planner<br/>channels + budget split"]
+        CO["fa:fa-shield-halved compliance<br/>policy verdict"]
+        RS --> CR --> MP --> CO
+    end
+
+    HR{"fa:fa-user-check human_review<br/>HITL gate - interrupt"}
+
+    subgraph MEASURE["Measure and decide"]
+        direction LR
+        KP["fa:fa-chart-line kpi_analytics<br/>snapshots + aggregates"]
+        RO["fa:fa-coins roi_calculator<br/>blended ROI + payback"]
+        OP["fa:fa-arrows-rotate optimization<br/>up to 3 actions"]
+        VR["fa:fa-scale-balanced was it worth it?<br/>ROI verdict"]
+        KP --> RO --> OP --> VR
+    end
+
+    REJ["fa:fa-rotate-left rejected - revise with comments<br/>loops back to creative_strategist"]
     BL["fa:fa-ban blocked<br/>3 revisions reached"]
 
-    S((start)) --> RS --> CR --> MP --> CO --> HR
-    HR -->|approved| KP
-    HR -->|rejected - revise w/ comments| CR
-    HR -->|3 revisions hit| BL
-    KP --> RO --> OP --> VR --> E((end))
+    PLAN --> HR
+    HR -->|approved| MEASURE
+    HR -->|rejected| REJ
+    HR -->|3 revisions| BL
 
     classDef research fill:#E7ECF1,stroke:#3B4552,color:#12181F
     classDef creative fill:#F3F0FE,stroke:#6D28D9,color:#5B21B6
@@ -228,7 +239,7 @@ _PIPELINE = """flowchart LR
     classDef money fill:#E9F2ED,stroke:#176B4F,color:#11533E
     classDef verdict fill:#D5E6DD,stroke:#11533E,color:#0B3A2B,stroke-width:2px
     classDef bad fill:#F9DEDC,stroke:#B42318,color:#7F1D1D
-    classDef terminal fill:#12181F,stroke:#12181F,color:#FFFFFF
+    classDef loop fill:#FDF3E3,stroke:#B45309,color:#7C4A08,stroke-dasharray:4 3
     class RS research
     class CR creative
     class MP media
@@ -239,44 +250,50 @@ _PIPELINE = """flowchart LR
     class OP data
     class VR verdict
     class BL bad
-    class S,E terminal
+    class REJ loop
 """
 
 _ARCHITECTURE = """flowchart TB
-    UI["fa:fa-gauge-high Streamlit dashboard<br/>:8501 - campaigns / traces / ROI / review"]
-    API["fa:fa-server FastAPI :8000<br/>tenant header - routing - persistence"]
-    GRAPH["fa:fa-diagram-project LangGraph orchestrator<br/>7-agent graph<br/>Postgres checkpointer"]
-    LLM["fa:fa-brain Coarena LLM<br/>gpt-6-luna"]
-
-    subgraph MCPLAYER["MCP server layer - 8 servers"]
+    subgraph REQ["Request path"]
         direction LR
-        M1["fa:fa-magnifying-glass research<br/>:9001 read-only"]
-        M2["fa:fa-bullhorn ads<br/>:9002 write-gated"]
-        M3["fa:fa-chart-line analytics<br/>:9003 read-only"]
-        M4["fa:fa-coins roi<br/>:9004 read-only"]
-        M5["fa:fa-shield-halved compliance<br/>:9005 read-only"]
-        M6["fa:fa-bullseye google-ads official<br/>:9006 read-only"]
-        M7["fa:fa-earth-americas public_data<br/>:9007 read-only"]
-        M8["fa:fa-handshake linkedin<br/>:9012 custom"]
+        UI["fa:fa-gauge-high Streamlit dashboard<br/>:8501"]
+        API["fa:fa-server FastAPI :8000<br/>tenant header - routing - persistence"]
+        GRAPH["fa:fa-diagram-project LangGraph orchestrator<br/>7-agent graph - Postgres checkpointer"]
+        LLM["fa:fa-brain Coarena LLM<br/>gpt-6-luna"]
+        UI -->|HTTP| API --> GRAPH
+        GRAPH -->|LLM calls| LLM
     end
 
-    subgraph EXT["Free public data sources"]
+    subgraph MCPLAYER["MCP server layer - eight servers, every write gated"]
         direction LR
-        E1["fa:fa-cloud DuckDuckGo -> Jina + Bing<br/>Wikipedia - Google Trends<br/>Google Suggest - Jina Reader"]
-        E2["fa:fa-newspaper SEC EDGAR - Wikipedia Pageviews<br/>HN - Reddit - StackExchange<br/>OpenCorporates - AppStore - IPInfo"]
+        M1["fa:fa-magnifying-glass research<br/>:9001"]
+        M2["fa:fa-bullhorn ads<br/>:9002"]
+        M3["fa:fa-chart-line analytics<br/>:9003"]
+        M4["fa:fa-coins roi<br/>:9004"]
+        M5["fa:fa-shield-halved compliance<br/>:9005"]
+        M6["fa:fa-bullseye google-ads<br/>:9006"]
+        M7["fa:fa-earth-americas public_data<br/>:9007"]
+        M8["fa:fa-handshake linkedin<br/>:9012"]
+        M1 ~~~ M2 ~~~ M3 ~~~ M4 ~~~ M5 ~~~ M6 ~~~ M7 ~~~ M8
+    end
+
+    subgraph EXT["Free public data sources - no paid keys"]
+        direction LR
+        E1["fa:fa-cloud DuckDuckGo + Wikipedia<br/>Google Trends / Suggest"]
+        E2["fa:fa-newspaper SEC EDGAR - HN - Reddit<br/>OpenCorporates - IPInfo"]
+        E1 ~~~ E2
     end
 
     subgraph STORE["Storage"]
         direction LR
         PG[("fa:fa-database Postgres<br/>campaigns / KPIs / audit")]
         RD[("fa:fa-bolt Redis<br/>rate limits")]
+        PG ~~~ RD
     end
 
-    UI -->|HTTP| API --> GRAPH
-    GRAPH -->|LLM calls| LLM
-    GRAPH -->|tool calls| MCPLAYER
+    REQ -->|tool calls| MCPLAYER
     MCPLAYER -->|read-only APIs| EXT
-    GRAPH -->|checkpoints + state| STORE
+    REQ -->|checkpoints + state| STORE
 
     classDef ui fill:#E7ECF1,stroke:#12181F,color:#12181F,stroke-width:1.5px
     classDef core fill:#E9F2ED,stroke:#176B4F,color:#11533E,stroke-width:2px
@@ -327,10 +344,13 @@ af_section("Agent pipeline", "The path every campaign travels, and the gate you 
 render_mermaid(_PIPELINE, 520)
 af_legend(
     [
-        ("Agents", "#6D28D9"),
+        ("Research", "#3B4552"),
+        ("Creative", "#6D28D9"),
+        ("Media", "#B45309"),
+        ("Compliance", "#A16207"),
         ("HITL gate", "#176B4F"),
         ("Measure", "#38678C"),
-        ("Money and verdict", "#11533E"),
+        ("Verdict", "#11533E"),
         ("Blocked", "#B42318"),
     ]
 )
@@ -341,7 +361,7 @@ af_caption(
 )
 
 af_section("System architecture", "Services and the MCP layer behind the console")
-render_mermaid(_ARCHITECTURE, 680)
+render_mermaid(_ARCHITECTURE, 500)
 af_legend(
     [
         ("UI + API", "#12181F"),
@@ -360,7 +380,7 @@ af_caption(
 )
 
 af_section("Guardrails", "What every agent call must clear")
-render_mermaid(_GUARDRAILS, 440)
+render_mermaid(_GUARDRAILS, 540)
 af_legend(
     [
         ("Agent call", "#12181F"),

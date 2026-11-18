@@ -447,3 +447,36 @@ Still open for the demo (not defects, deliberate scope):
 3. Publishing still requires a real, authenticated webhook; `POST
    /reviews/{id}/publish` is the only path from `approved` to `live` and it
    stays disabled without `ADFORGE_ENABLE_LIVE_WRITES`.
+
+## Dashboard UI pass (2026-11-19)
+
+A second pass over the Streamlit console, driven by full-page screenshots at
+1600x2000 rather than by the code alone. Every item below was reproduced in the
+browser before it was changed.
+
+| Defect | Impact | Fix |
+|--------|--------|-----|
+| Mermaid diagrams rendered into fixed-height iframes | The agent pipeline (a 2182x198 LR graph) was scaled to 50% inside a 520px box: 6px labels and 421px of dead space. The architecture graph overflowed its frame. | `render_mermaid` now strips the SVG's intrinsic size and sets `width/height: 100%` with `preserveAspectRatio="xMidYMid meet"`, so the whole diagram is centred at the largest size the frame allows. |
+| Subgraph `direction LR` was ignored | Mermaid drops a subgraph's direction when its nodes have edges crossing the boundary. The pipeline collapsed into a 414x1158 vertical column and was unreadable at any frame height. | The pipeline now connects the `PLAN` and `MEASURE` subgraphs (not their nodes) and shows rejection as a labelled loop node. Native size is ~1251x556, which fills the frame at ~0.87 scale. |
+| Primary button labels were invisible | The global `p { color: slate }` rule also matched the `<p>` inside Streamlit buttons, painting slate on pine. The Run button looked like an empty green rectangle. | Button descendants now inherit the button's colour; disabled buttons get an explicit muted style. |
+| Main page appeared as "app" in the nav | Streamlit's legacy multipage nav uses the entrypoint filename as the page label. | `app.py` renamed to `Overview.py`; `Makefile` and `docker-compose.yml` updated. Ruff `N999` is ignored for that one file with a comment. |
+| Four page-local `<style>` blocks duplicated the design system | Component CSS drifted between pages and was re-injected on every rerun; `.af-ops-row` used a 10px radius while the tokens said 6px. | All component CSS moved into `theme._CSS` (ledger rows, tables, dossiers, verdict banner). New `af_empty`, `af_note`, `af_table` and `af_verdict` helpers replace hand-built markup. A test fails if a page reintroduces `<style>`. |
+| ROI verdict used a stale agent rationale as its explanation | The banner said "No KPI snapshots were provided" while the page displayed 14 days of seeded KPI rows. The rationale was written before the rows existed. | The banner now explains the verdict computed from the live buckets ("Google is the biggest drag at 0.51x"). The recorded agent rationale is demoted to a collapsed expander with a note that it may predate the data. |
+| Empty and error states were browser-blue `st.info` blocks | The review queue showed a lone monospace `0` followed by a Streamlit info box; failures broke the palette. | `af_empty` panels for empty queues/campaigns/runs and `af_note` strips for warnings and failures. Traces gained a status filter; zero-cost runs are labelled as the free Coarena tier. |
+| Streamlit chrome leaked into the demo | The "Deploy" button and toolbar appeared top-right on every page. | Toolbar/Deploy hidden; running indicator kept (agent runs take minutes). Sidebar carries an `AdForge / campaign operations console` wordmark above the nav. |
+
+Verification:
+
+| Check | Result |
+|-------|--------|
+| Full non-live suite | **691 passed, 6 skipped** (the skips are the live-service suites) |
+| New theme tests | 11 tests pin escaping, numeric alignment, the viewport-fit script, the shared stylesheet, and the `Overview.py` entrypoint |
+| Screenshots | Desktop 1600x2000 for all five pages; 760x1400 and 500x1400 narrow checks. No horizontal overflow (`scrollWidth == innerWidth`) at any width. |
+| `ruff check` | Clean on every changed Python file. |
+
+Known limitation: below 768px Streamlit renders the sidebar as an overlay and
+lets the main column start at x=0, so an *open* sidebar covers the page. The
+app now uses `initial_sidebar_state="auto"` so a phone starts with it collapsed;
+a narrow desktop window between 641 and 767px can still show the overlay until
+it is dismissed. Fixing that means overriding Streamlit's mobile layout, which
+was judged riskier than the defect.

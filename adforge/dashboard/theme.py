@@ -20,14 +20,19 @@ Usage from ``app.py`` or any file in ``adforge/dashboard/pages/``::
     from adforge.dashboard.theme import (
         af_badge,
         af_card,
+        af_empty,
         af_legend,
         af_metric,
+        af_note,
         af_section,
+        af_table,
+        af_verdict,
         inject_css,
         render_mermaid,
     )
 
     inject_css()          # first call, right after st.set_page_config()
+    af_note("Simulated KPI rows: the ROI arithmetic is real, the inputs are not.")
     st.markdown(af_card("research", "Ship it", "One line of copy."),
                 unsafe_allow_html=True)
     render_mermaid(diagram_source, 620)
@@ -161,11 +166,12 @@ html, body { font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; }
 .stApp { background: var(--af-canvas); color: var(--af-body); }
 .block-container { padding-top: 0.6rem; padding-bottom: 3.5rem; max-width: 1280px; }
 
-/* Chrome: drop the menu/footer, keep sidebar + header. */
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
+/* Chrome: drop the hosted-Streamlit chrome (menu, footer, Deploy button) so
+   the console reads as a product surface, not a Streamlit Cloud demo. The
+   running indicator is kept because agent runs take minutes. */
+#MainMenu, footer, [data-testid="stDecoration"] { visibility: hidden; }
 header[data-testid="stHeader"] { background: transparent; }
-[data-testid="stToolbar"] { right: 1rem; }
+[data-testid="stToolbar"], [data-testid="stAppDeployButton"] { display: none !important; }
 
 h1, h2, h3 { color: var(--af-heading); font-weight: 700; letter-spacing: -0.012em; }
 h1 { font-size: 1.75rem; }
@@ -186,12 +192,32 @@ input:focus-visible, [data-testid="stSidebarNav"] a:focus-visible {
 }
 
 /* Sidebar */
-[data-testid="stSidebar"] { background: var(--af-surface); border-right: 1px solid var(--af-border); }
-[data-testid="stSidebar"] [data-testid="stSidebarNav"] a { border-radius: var(--af-radius); }
+[data-testid="stSidebar"] {
+  background: var(--af-surface); border-right: 1px solid var(--af-border); min-width: 264px;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarNav"] { overflow-x: clip; }
+/* Product mark above the nav. Legacy multipage apps have no header slot for
+   it, so the nav container carries the wordmark as generated content. */
+[data-testid="stSidebar"] [data-testid="stSidebarNav"]::before {
+  content: "AdForge"; display: block; font-family: var(--af-mono);
+  font-size: 0.95rem; font-weight: 800; letter-spacing: -0.02em;
+  color: var(--af-heading); padding: 0.35rem 0.6rem 0.1rem; margin: 0 0.45rem;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarNav"]::after {
+  content: "campaign operations console"; display: block;
+  font-family: var(--af-mono); font-size: 0.66rem; color: var(--af-muted);
+  letter-spacing: 0.02em; padding: 0 0.6rem 0.55rem; margin: 0 0.45rem 0.35rem;
+  border-bottom: 1px solid var(--af-border);
+}
+[data-testid="stSidebar"] [data-testid="stSidebarNav"] a {
+  border-radius: var(--af-radius); padding: 0.32rem 0.6rem;
+  margin: 0.1rem 0.45rem; white-space: nowrap;
+}
 [data-testid="stSidebar"] [data-testid="stSidebarNav"] a:hover { background: var(--af-accent-soft); }
 [data-testid="stSidebar"] [data-testid="stSidebarNav"] a[aria-current="page"] {
   background: var(--af-accent-soft); box-shadow: inset 2px 0 0 var(--af-accent);
 }
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] { padding-top: 0.35rem; }
 
 /* Native metrics + form chrome */
 [data-testid="stMetric"] {
@@ -218,6 +244,27 @@ input:focus-visible, [data-testid="stSidebarNav"] a:focus-visible {
   box-shadow: none;
 }
 .stButton > button[kind="secondary"]:hover { border-color: var(--af-accent); color: var(--af-accent); }
+
+/* Streamlit wraps button labels in <p>, and the global prose colour would
+   otherwise paint every primary label slate-on-pine. Make the label inherit
+   the button's own colour instead. */
+.stButton > button p, .stFormSubmitButton > button p,
+.stDownloadButton > button p, [data-testid^="stBaseButton"] p {
+  color: inherit; font-size: inherit; font-weight: inherit; line-height: 1.2;
+  max-width: none; margin: 0;
+}
+.stButton > button:disabled, .stFormSubmitButton > button:disabled,
+[data-testid^="stBaseButton"]:disabled {
+  background: #E7EBEF; border-color: var(--af-border); color: var(--af-muted);
+  cursor: not-allowed;
+}
+
+/* Inputs: one radius, one hairline, readable size. */
+[data-baseweb="input"], [data-baseweb="select"] > div, [data-baseweb="textarea"] {
+  border-radius: var(--af-radius);
+}
+[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
+[data-testid="stTextArea"] textarea { font-size: 0.9rem; }
 
 [data-testid="stExpander"] {
   background: var(--af-surface); border: 1px solid var(--af-border);
@@ -321,6 +368,151 @@ input:focus-visible, [data-testid="stSidebarNav"] a:focus-visible {
   font-size: 0.76rem; color: var(--af-body); font-weight: 500; }
 .af-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block;
   border: 1px solid rgba(18, 24, 31, 0.15); }
+
+/* Inline note strip: the replacement for st.info / st.warning on surfaces
+   where Streamlit's own alert palette would break the token language. */
+.af-note {
+  border-left: 3px solid var(--af-accent); background: var(--af-accent-soft);
+  color: #11533E; border-radius: 0 var(--af-radius) var(--af-radius) 0;
+  padding: 0.7rem 0.95rem; font-size: 0.86rem; line-height: 1.55;
+  margin: 0.55rem 0 0.9rem; max-width: 88ch;
+}
+.af-note--warn { border-left-color: #B45309; background: #FDF3E3; color: #7C4A08; }
+.af-note--bad { border-left-color: #B42318; background: #FBEBE9; color: #7F1D1D; }
+.af-note b { color: inherit; }
+
+/* Empty state: a deliberate "nothing here yet" panel instead of a blue alert
+   or a lone monospace zero. */
+.af-empty {
+  border: 1px dashed #C7CFD8; border-radius: var(--af-radius);
+  background: #FBFCFD; padding: 1.35rem 1.5rem; margin: 0.4rem 0 1rem;
+}
+.af-empty-kicker {
+  font-family: var(--af-mono); font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--af-muted);
+}
+.af-empty-title { color: var(--af-heading); font-weight: 700; font-size: 1rem; margin-top: 0.4rem; }
+.af-empty-body { color: var(--af-body); font-size: 0.88rem; line-height: 1.55;
+  margin-top: 0.3rem; max-width: 72ch; }
+.af-empty-hint { margin-top: 0.65rem; font-family: var(--af-mono); font-size: 0.78rem;
+  color: var(--af-accent); }
+
+/* Data tables: hairline ledger, sticky header, mono figures. */
+.af-table-wrap {
+  background: var(--af-surface); border: 1px solid var(--af-border);
+  border-radius: var(--af-radius); overflow: auto; margin-top: 0.4rem;
+  max-width: 100%;
+}
+table.af-table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 0.85rem; }
+table.af-table th {
+  text-align: left; font-weight: 600; color: var(--af-heading);
+  font-size: 0.76rem; padding: 0.6rem 1rem; background: var(--af-canvas);
+  border-bottom: 1px solid var(--af-border); position: sticky; top: 0; z-index: 1;
+  white-space: nowrap;
+}
+table.af-table td {
+  padding: 0.55rem 1rem; border-bottom: 1px solid var(--af-border);
+  color: var(--af-body); font-variant-numeric: tabular-nums; vertical-align: top;
+}
+table.af-table tr:last-child td { border-bottom: none; }
+table.af-table tbody tr:hover td { background: #FAFBFC; }
+table.af-table td.af-agent { font-weight: 600; color: var(--af-heading); font-family: var(--af-mono); }
+table.af-table .af-num { text-align: right; }
+table.af-table td.af-mono { font-family: var(--af-mono); }
+
+/* Campaign ledger rows: name/status left, money right, colour stripe by status. */
+.af-ops-list { display: flex; flex-direction: column; gap: 0.55rem; margin-top: 0.3rem; }
+.af-ops-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: 1.25rem; background: var(--af-surface); border: 1px solid var(--af-border);
+  border-left: 3px solid var(--af-accent); border-radius: var(--af-radius);
+  box-shadow: var(--af-shadow); padding: 0.75rem 1.1rem;
+}
+.af-ops-name { font-weight: 600; color: var(--af-heading); font-size: 0.92rem; }
+.af-ops-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.3rem; }
+.af-ops-id { color: var(--af-muted); font-size: 0.74rem; font-family: var(--af-mono); }
+.af-ops-link { color: var(--af-accent); font-size: 0.76rem; font-weight: 600; text-decoration: none; }
+.af-ops-link:hover { text-decoration: underline; }
+.af-ops-figures { display: flex; gap: 1.7rem; text-align: right; }
+.af-ops-fig-label { font-size: 0.72rem; font-weight: 600; color: var(--af-muted); }
+.af-ops-fig-value {
+  font-size: 0.98rem; font-weight: 700; color: var(--af-heading);
+  font-variant-numeric: tabular-nums; margin-top: 0.1rem; font-family: var(--af-mono);
+}
+
+/* Review dossiers: label/value documents, not card soup. */
+.af-doc {
+  background: var(--af-surface); border: 1px solid var(--af-border);
+  border-radius: var(--af-radius); box-shadow: var(--af-shadow);
+  padding: 1.1rem 1.3rem; margin-bottom: 0.9rem;
+}
+.af-doc-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
+  border-bottom: 1px solid var(--af-border); padding-bottom: 0.55rem; margin-bottom: 0.75rem;
+}
+.af-doc-title { font-weight: 700; color: var(--af-heading); font-size: 1rem; }
+.af-doc-row {
+  display: grid; grid-template-columns: 170px minmax(0, 1fr);
+  gap: 1rem; padding: 0.32rem 0; font-size: 0.88rem;
+}
+.af-doc-label { color: var(--af-muted); font-weight: 600; font-size: 0.8rem; }
+.af-doc-value { color: var(--af-body); line-height: 1.5; word-break: break-word; }
+.af-doc-value strong { color: var(--af-heading); font-weight: 600; }
+.af-doc-list { margin: 0.15rem 0 0 1.1rem; padding: 0; }
+.af-doc-list li { font-size: 0.86rem; color: var(--af-body); margin: 0.15rem 0; }
+.af-alloc-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin-top: 0.3rem; }
+.af-alloc-table th {
+  text-align: left; font-weight: 600; font-size: 0.78rem; color: var(--af-heading);
+  border-bottom: 1px solid var(--af-border); padding: 0.35rem 0.6rem 0.35rem 0;
+}
+.af-alloc-table td {
+  padding: 0.35rem 0.6rem 0.35rem 0; border-bottom: 1px solid var(--af-border);
+  color: var(--af-body); font-variant-numeric: tabular-nums;
+}
+.af-alloc-table tr:last-child td { border-bottom: none; }
+.af-alloc-table .af-right { text-align: right; }
+
+/* Verdict banner: the one loud element on the ROI page. */
+.af-verdict {
+  display: grid; grid-template-columns: minmax(200px, auto) minmax(0, 1fr); gap: 2rem;
+  align-items: center; background: var(--af-surface);
+  border: 1px solid var(--af-border); border-left: 6px solid var(--af-accent);
+  border-radius: var(--af-radius); box-shadow: var(--af-shadow);
+  padding: 1.5rem 1.75rem; margin: 0.6rem 0 1.1rem;
+}
+.af-verdict-word { font-family: var(--af-mono); font-size: 2.5rem; font-weight: 800;
+  letter-spacing: -0.03em; line-height: 1; }
+.af-verdict-kicker { font-size: 0.78rem; font-weight: 600; color: var(--af-muted);
+  margin-bottom: 0.45rem; }
+.af-verdict-stats { display: grid; grid-template-columns: repeat(4, minmax(0, auto)); gap: 1.8rem; }
+.af-verdict-stat-label { font-size: 0.74rem; font-weight: 600; color: var(--af-muted); }
+.af-verdict-stat-value { font-family: var(--af-mono); font-size: 1.25rem; font-weight: 700;
+  color: var(--af-heading); font-variant-numeric: tabular-nums; margin-top: 0.15rem;
+  letter-spacing: -0.01em; }
+.af-verdict-why { grid-column: 1 / -1; font-size: 0.88rem; color: var(--af-body);
+  line-height: 1.55; border-top: 1px solid var(--af-border); padding-top: 0.8rem;
+  max-width: 88ch; }
+.af-verdict-why b { color: var(--af-heading); }
+
+/* Narrow viewports: grids collapse before Streamlit stacks its columns. */
+@media (max-width: 900px) {
+  .af-verdict { grid-template-columns: 1fr; gap: 1rem; }
+  .af-verdict-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .af-ops-row { grid-template-columns: 1fr; }
+  .af-ops-figures { justify-content: flex-start; text-align: left; }
+  .af-doc-row { grid-template-columns: 1fr; gap: 0.15rem; }
+  /* Four Streamlit columns still sit side by side at this width; the mono
+     figures must shrink or "$10,901.67" breaks across two lines. */
+  .af-metric { padding: 0.8rem 0.9rem; }
+  .af-metric-value { font-size: 1.3rem; }
+}
+@media (max-width: 640px) {
+  .af-hero { padding: 1.1rem 1.15rem; }
+  .af-hero-title { font-size: 1.5rem; }
+  .af-metric-value { font-size: 1.45rem; }
+  .af-verdict-word { font-size: 2rem; }
+  .af-verdict { padding: 1.1rem 1.15rem; }
+}
 """
 
 # --------------------------------------------------------------------------- #
@@ -416,6 +608,106 @@ def af_caption(text: str) -> None:
     st.markdown(f'<div class="af-caption">{_esc(text)}</div>', unsafe_allow_html=True)
 
 
+def af_note(text: str, tone: str = "info") -> None:
+    """Render a tinted note strip instead of a Streamlit alert.
+
+    ``text`` may contain simple inline HTML (``<b>``, ``<code>``); ``tone`` is
+    ``info`` (pine), ``warn`` (amber) or ``bad`` (red).
+    """
+    modifier = {"info": "", "warn": " af-note--warn", "bad": " af-note--bad"}.get(tone, "")
+    st.markdown(f'<div class="af-note{modifier}">{text}</div>', unsafe_allow_html=True)
+
+
+def af_empty(
+    title: str,
+    body: str,
+    hint: str | None = None,
+    kicker: str = "Nothing here yet",
+) -> None:
+    """Render a deliberate empty-state panel.
+
+    Replaces ``st.info`` for "no campaigns / no runs / queue clear" so an empty
+    screen still looks designed instead of showing a browser-blue callout.
+    """
+    hint_html = f'<div class="af-empty-hint">{_esc(hint)}</div>' if hint else ""
+    st.markdown(
+        '<div class="af-empty">'
+        f'<div class="af-empty-kicker">{_esc(kicker)}</div>'
+        f'<div class="af-empty-title">{_esc(title)}</div>'
+        f'<div class="af-empty-body">{_esc(body)}</div>'
+        f"{hint_html}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def af_table(
+    headers: list[str],
+    rows: list[list[str]],
+    numeric_cols: set[int] | None = None,
+    min_width: int = 620,
+) -> str:
+    """Return a ledger table fragment.
+
+    ``rows`` cells are trusted HTML (they usually embed :func:`af_badge`);
+    header labels are escaped. ``numeric_cols`` right-aligns both the header
+    and the cells at those indexes.
+    """
+    right = numeric_cols or set()
+    head = "".join(
+        f'<th class="af-num">{_esc(h)}</th>' if i in right else f"<th>{_esc(h)}</th>"
+        for i, h in enumerate(headers)
+    )
+    body = "".join(
+        "<tr>"
+        + "".join(
+            f'<td class="af-num">{cell}</td>' if i in right else f"<td>{cell}</td>"
+            for i, cell in enumerate(row)
+        )
+        + "</tr>"
+        for row in rows
+    )
+    return (
+        f'<div class="af-table-wrap" style="max-width:100%">'
+        f'<table class="af-table" style="min-width:{int(min_width)}px">'
+        f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>"
+    )
+
+
+def af_verdict(
+    word: str,
+    tone: str,
+    stats: list[tuple[str, str]],
+    note: str | None = None,
+    note_label: str = "Agent rationale",
+) -> None:
+    """Render the ROI verdict banner.
+
+    ``tone`` is a status token (``approved`` / ``reviewing`` / ``blocked`` /
+    ``failed``); ``stats`` is an ordered ``[(label, value), ...]`` list;
+    ``note`` is optional prose shown under a rule. ``word`` and the figures are
+    escaped, ``note_label`` supplies the bold lead-in for the note.
+    """
+    colour = status_color(tone)
+    stats_html = "".join(
+        f'<div><div class="af-verdict-stat-label">{_esc(label)}</div>'
+        f'<div class="af-verdict-stat-value">{_esc(value)}</div></div>'
+        for label, value in stats
+    )
+    note_html = (
+        f'<div class="af-verdict-why"><b>{_esc(note_label)}</b> {_esc(note)}</div>'
+        if note
+        else ""
+    )
+    st.markdown(
+        f'<div class="af-verdict" style="border-left-color:{colour}">'
+        f'<div><div class="af-verdict-kicker">Recommended action</div>'
+        f'<div class="af-verdict-word" style="color:{colour}">{_esc(word)}</div></div>'
+        f'<div class="af-verdict-stats">{stats_html}</div>'
+        f"{note_html}</div>",
+        unsafe_allow_html=True,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Mermaid
 # --------------------------------------------------------------------------- #
@@ -445,12 +737,15 @@ mermaid.initialize({
 
 
 def render_mermaid(code: str, height: int) -> None:
-    """Render a Mermaid diagram in a standalone HTML iframe.
+    """Render a Mermaid diagram scaled to fit its iframe.
 
     ``code`` is the diagram source and is embedded with ``json.dumps`` so the
     Streamlit component script can never be broken by quotes or newlines in the
-    label text. A syntax error surfaces as readable text inside the iframe
-    instead of a blank box.
+    label text. Once Mermaid has produced the SVG the script drops its intrinsic
+    width/height and sets ``width/height: 100%`` with
+    ``preserveAspectRatio="xMidYMid meet"``, so the whole diagram is always
+    visible and centred at the largest legible size the frame allows. A syntax
+    error surfaces as readable text inside the iframe instead of a blank box.
     """
     doc = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
@@ -459,17 +754,36 @@ def render_mermaid(code: str, height: int) -> None:
         "&family=JetBrains+Mono:wght@500;700;800&display=swap'>"
         f"<link rel='stylesheet' href='{_FONT_AWESOME_CDN}'>"
         f"<script src='{_MERMAID_CDN}'></script>"
-        "<style>body{margin:0;padding:8px;background:transparent;"
-        "font-family:Inter,sans-serif;}"
-        "pre.err{color:#98261B;font-size:12px;white-space:pre-wrap;}</style>"
-        "</head><body><div id='diagram'></div><script>"
+        "<style>html,body{height:100%;margin:0;padding:0;overflow:hidden;"
+        "background:transparent;font-family:Inter,sans-serif;}"
+        "#diagram{height:100%;width:100%;display:flex;align-items:center;"
+        "justify-content:center;padding:8px;box-sizing:border-box;}"
+        "#diagram svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%;}"
+        "#loading{position:absolute;inset:0;display:flex;align-items:center;"
+        "justify-content:center;font-family:'JetBrains Mono',monospace;"
+        "font-size:11px;color:#6B7683;}"
+        "pre.err{color:#98261B;font-size:12px;white-space:pre-wrap;margin:8px;}"
+        "</style>"
+        "</head><body><div id='diagram'></div>"
+        "<div id='loading'>rendering diagram</div><script>"
         + _MERMAID_INIT
         + "const src = "
         + json.dumps(code)
         + ";mermaid.render('adforgeDiagram', src)"
-        ".then(function(res){document.getElementById('diagram').innerHTML = res.svg;})"
-        ".catch(function(err){document.getElementById('diagram').innerHTML ="
-        " '<pre class=\"err\">' + err + '</pre>';});"
+        ".then(function(res){"
+        "document.getElementById('loading').remove();"
+        "const host = document.getElementById('diagram');"
+        "host.innerHTML = res.svg;"
+        "const svg = host.querySelector('svg');"
+        "if (svg) { svg.removeAttribute('height'); svg.setAttribute('width','100%');"
+        "svg.setAttribute('height','100%'); svg.style.maxWidth='100%';"
+        "svg.style.maxHeight='100%'; svg.setAttribute('preserveAspectRatio','xMidYMid meet'); }"
+        "})"
+        ".catch(function(err){"
+        "const loading = document.getElementById('loading'); if (loading) loading.remove();"
+        "const host = document.getElementById('diagram');"
+        "host.setAttribute('data-af-diagram-error','1');"
+        "host.innerHTML = '<pre class=\"err\">' + err + '</pre>';});"
         "</script></body></html>"
     )
-    st.components.v1.html(doc, height=height, scrolling=True)
+    st.components.v1.html(doc, height=height, scrolling=False)

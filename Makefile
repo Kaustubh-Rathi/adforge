@@ -66,7 +66,7 @@ run-api:
 	uvicorn adforge.api.main:app --reload --port 8000
 
 run-dashboard:
-	streamlit run adforge/dashboard/app.py --server.port=8501
+	streamlit run adforge/dashboard/Overview.py --server.port=8501
 
 run-mcp:
 	python -m adforge.mcp_servers.runner $(NAME)

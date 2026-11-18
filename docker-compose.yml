@@ -172,7 +172,7 @@ services:
   dashboard:
     build: .
     container_name: adforge-dashboard
-    command: ["streamlit", "run", "adforge/dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    command: ["streamlit", "run", "adforge/dashboard/Overview.py", "--server.port=8501", "--server.address=0.0.0.0"]
     env_file: .env
     environment:
       ADFORGE_API_URL: http://api:8000

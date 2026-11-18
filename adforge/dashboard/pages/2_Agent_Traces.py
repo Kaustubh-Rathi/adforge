@@ -11,39 +11,17 @@ import streamlit as st
 from adforge.dashboard import api_client as api
 from adforge.dashboard.theme import (
     af_badge,
+    af_caption,
+    af_empty,
     af_metric,
+    af_note,
     af_section,
+    af_table,
     inject_css,
 )
 
 inject_css()
 api.tenant_switcher()
-
-st.markdown(
-    """
-    <style>
-    .af-table-wrap {
-      background: var(--af-surface); border: 1px solid var(--af-border);
-      border-radius: var(--af-radius); box-shadow: var(--af-shadow); overflow: hidden;
-      margin-top: 0.4rem;
-    }
-    table.af-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    table.af-table th {
-      text-align: left; font-weight: 600; color: var(--af-heading);
-      font-size: 0.78rem; padding: 0.6rem 1rem; background: var(--af-canvas);
-      border-bottom: 1px solid var(--af-border);
-    }
-    table.af-table td {
-      padding: 0.55rem 1rem; border-bottom: 1px solid var(--af-border);
-      color: var(--af-body); font-variant-numeric: tabular-nums;
-    }
-    table.af-table tr:last-child td { border-bottom: none; }
-    table.af-table td.af-agent { font-weight: 600; color: var(--af-heading); }
-    table.af-table td.af-num { text-align: right; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
 
 #: Run statuses are not campaign statuses; map them onto the closest badge token
 #: so a succeeded run reads green and a failed run reads red, with the raw
@@ -83,6 +61,16 @@ def _fmt_ts(raw: Any) -> str:
         return text
 
 
+def _fmt_duration(value: Any) -> str:
+    """Sub-second runs read as ``<0.1``; a missing duration reads as an em dash."""
+    if value is None:
+        return "—"
+    seconds = float(value)
+    if seconds < 0.1:
+        return "<0.1"
+    return f"{seconds:.1f}"
+
+
 def _run_badge(status: str) -> str:
     token = _RUN_BADGE_TOKENS.get(str(status or "").lower(), str(status or ""))
     label = str(status or "unknown").replace("_", " ").strip().title()
@@ -98,11 +86,15 @@ af_section("Agent traces", "Every agent run for a campaign — outcome, cost and
 try:
     campaigns = api.list_campaigns()
 except Exception as e:
-    st.error(f"Failed to load campaigns: {e}")
+    af_note(f"<b>Failed to load campaigns.</b> {_esc(e)}", tone="bad")
     campaigns = []
 
 if not campaigns:
-    st.info("No campaigns yet — create one on the Campaigns page.")
+    af_empty(
+        "No campaigns in this tenant",
+        "Create a brief on the Campaigns page, then run the agent graph.",
+        hint="make seed",
+    )
     st.stop()
 
 campaign_id = st.selectbox(
@@ -111,11 +103,23 @@ campaign_id = st.selectbox(
     format_func=lambda cid: next(c["name"] for c in campaigns if c["id"] == cid),
 )
 
-agent_filter = st.selectbox(
-    "Filter by agent",
-    options=["(all)", "research", "creative_strategist", "media_planner",
-             "compliance", "kpi_analytics", "roi_calculator", "optimization"],
-)
+filter_col, status_col = st.columns(2)
+with filter_col:
+    agent_filter = st.selectbox(
+        "Filter by agent",
+        options=[
+            "(all)",
+            "research",
+            "creative_strategist",
+            "media_planner",
+            "compliance",
+            "kpi_analytics",
+            "roi_calculator",
+            "optimization",
+        ],
+    )
+with status_col:
+    status_filter = st.selectbox("Filter by status", options=["(all)", "succeeded", "failed"])
 
 try:
     runs = api.get_agent_runs(
@@ -123,10 +127,14 @@ try:
         agent_name=None if agent_filter == "(all)" else agent_filter,
     )
 except Exception as e:
-    st.error(f"Failed to load runs: {e}")
+    af_note(f"<b>Failed to load runs.</b> {_esc(e)}", tone="bad")
     runs = {"runs": []}
 
 run_list = runs.get("runs", [])
+if status_filter != "(all)":
+    run_list = [
+        r for r in run_list if str(r.get("status", "")).strip().lower() == status_filter
+    ]
 
 m1, m2, m3, m4 = st.columns(4)
 with m1:
@@ -141,25 +149,29 @@ with m4:
     total_tokens = sum(r.get("usage", {}).get("total_tokens", 0) for r in run_list)
     af_metric("Total tokens", f"{total_tokens:,}")
 
+total_cost = sum(float((r.get("usage") or {}).get("cost_usd") or 0.0) for r in run_list)
+if run_list and total_cost == 0.0:
+    af_caption("LLM cost is $0.00 in the demo: Coarena is the free tier.")
+
 # Runs ledger
 if run_list:
-    run_rows = "".join(
-        '<tr>'
-        f'<td class="af-agent">{_esc(r["agent_name"])}</td>'
-        f'<td>{_run_badge(r["status"])}</td>'
-        f'<td>{_esc(_fmt_ts(r["started_at"]))}</td>'
-        f'<td class="af-num">{(r.get("duration_seconds") or 0.0):.1f}</td>'
-        f'<td class="af-num">{int((r.get("usage") or {}).get("total_tokens") or 0):,}</td>'
-        f'<td class="af-num">${float((r.get("usage") or {}).get("cost_usd") or 0.0):.4f}</td>'
-        '</tr>'
+    run_rows = [
+        [
+            f'<span class="af-term">{_esc(r["agent_name"])}</span>',
+            _run_badge(r["status"]),
+            _esc(_fmt_ts(r["started_at"])),
+            _fmt_duration(r.get("duration_seconds")),
+            f'{int((r.get("usage") or {}).get("total_tokens") or 0):,}',
+            f'${float((r.get("usage") or {}).get("cost_usd") or 0.0):,.2f}',
+        ]
         for r in run_list
-    )
+    ]
     st.markdown(
-        '<div class="af-table-wrap"><table class="af-table">'
-        "<thead><tr><th>Agent</th><th>Status</th><th>Started</th>"
-        '<th>Duration (s)</th><th style="text-align:right">Tokens</th>'
-        '<th style="text-align:right">Cost</th></tr></thead>'
-        f"<tbody>{run_rows}</tbody></table></div>",
+        af_table(
+            ["Agent", "Status", "Started", "Duration (s)", "Tokens", "Cost"],
+            run_rows,
+            numeric_cols={3, 4, 5},
+        ),
         unsafe_allow_html=True,
     )
 
@@ -185,22 +197,25 @@ if run_list:
     af_section("Audit log", "The 100 most recent logged events.")
     try:
         events = api.get_audit_events(campaign_id)
-        event_rows = "".join(
-            '<tr>'
-            f'<td>{_esc(_fmt_ts(e["occurred_at"]))}</td>'
-            f'<td class="af-agent">{_esc(e["event_type"])}</td>'
-            f'<td>{_esc(e.get("agent_name") or "-")}</td>'
-            f'<td>{_esc(_summarise(e["payload"]))}</td>'
-            '</tr>'
+        event_rows = [
+            [
+                _esc(_fmt_ts(e["occurred_at"])),
+                f'<span class="af-term">{_esc(e["event_type"])}</span>',
+                _esc(e.get("agent_name") or "-"),
+                _esc(_summarise(e["payload"])),
+            ]
             for e in events.get("events", [])[:100]
-        )
+        ]
         st.markdown(
-            '<div class="af-table-wrap"><table class="af-table">'
-            "<thead><tr><th>Time</th><th>Type</th><th>Agent</th>"
-            f"<th>Summary</th></tr></thead><tbody>{event_rows}</tbody></table></div>",
+            af_table(["Time", "Type", "Agent", "Summary"], event_rows),
             unsafe_allow_html=True,
         )
     except Exception as e:
-        st.warning(f"Could not load audit events: {e}")
+        af_note(f"<b>Could not load audit events.</b> {_esc(e)}", tone="warn")
 else:
-    st.info("No agent runs yet. Run a campaign from the Campaigns page.")
+    if agent_filter != "(all)" or status_filter != "(all)":
+        body = "No runs match the current agent and status filters."
+    else:
+        body = "Run the campaign from the Campaigns page to see its traces here."
+    af_empty("No agent runs", body)
+    st.stop()
