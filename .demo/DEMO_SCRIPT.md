@@ -5,7 +5,10 @@ API on :8000, dashboard on :8501, LLM = Coarena free tier (`gpt-6-luna`).
 
 ## 0. Before the audience arrives (dry run)
 
-1. `make db-up && make seed` — 3 example campaigns with 30 days of mock KPIs (marked `is_mock=true`).
+1. `make db-up && make seed` — 3 example campaigns with 30 days of mock KPIs
+   (every row is stored with `is_mock=true` and the dashboard labels it).
+   Re-running the seed is safe: it rewrites the same campaigns instead of
+   duplicating them.
 2. `make run-api` (terminal 1) and `make run-dashboard` (terminal 2).
 3. Rehearse one full campaign run (below) so the traces + ROI pages are warm.
 
@@ -16,17 +19,19 @@ API on :8000, dashboard on :8501, LLM = Coarena free tier (`gpt-6-luna`).
 > KPI analytics, ROI, and optimization — take it from idea to measured result.
 > It runs on LangGraph with every agent owning its own MCP tool server, and
 > this whole demo costs $0: free LLM via Coarena, free no-auth data APIs
-> (DuckDuckGo, Wikipedia, Google Trends, SEC EDGAR, Jina Reader, Hacker News...),
+> (DuckDuckGo, Wikipedia, Google Trends, SEC EDGAR, Hacker News...),
 > and mock ad-platform KPIs that are explicitly labelled as mock."
 
 Open http://localhost:8501 — show the architecture diagram on the home page.
 
 ## 2. Show the seeded data (1 min)
 
-- Sidebar → **Campaigns**: show the 3 seeded campaigns (tenant dropdown).
+- Sidebar → **Campaigns**: show the 3 seeded campaigns.
 - Sidebar → **ROI Calculator**: pick `tenant_acme_saas` → "DTC SaaS — ProjectFlow launch".
   Show per-channel ROAS, CPA, net profit — the "was it worth it?" answer.
-- Point out every KPI row is labelled `is_mock=true` (honest demo data).
+- Point at the caption above the verdict: *"Simulated data: every channel uses
+  generated mock KPI rows (is_mock=true). The ROI arithmetic is real; the inputs
+  are not."* That sentence comes from the API's `is_mock` flag, not from the page.
 
 ## 3. Live run — create + run a campaign (3–5 min)
 
@@ -36,11 +41,13 @@ Open http://localhost:8501 — show the architecture diagram on the home page.
    - Budget $15,000, 14 days, channels google + linkedin, objective conversion.
 2. Hit **Run**. Narrate as it goes:
    - **Research** — real live calls: Google Trends interest series, Wikipedia,
-     keyword suggestions, competitor pages fetched through Jina Reader,
-     Bing SERP fallback when DuckDuckGo rate-limits.
+     keyword suggestions, and a search chain that starts on DuckDuckGo-lite and
+     falls back to Bing RSS when DuckDuckGo rate-limits.
    - **Creative** — headline, primary text, A/B variants per channel.
    - **Media** — channel budget split, bidding, targeting, flight dates.
    - **Compliance** — PolicyEnforcer verdict; flagged issues + required disclosures.
+     This one is worth dwelling on: it genuinely rejects copy that breaks a
+     channel limit (e.g. a 34-character Google headline against the 30-char cap).
 3. The run **pauses for human review** — this is the HITL gate:
    - Sidebar → **Review Queue** → approve the campaign live (reviewer: `reviewer@adforge.local`).
    - After approval: **KPI analytics** pulls (mock, labelled) daily snapshots,
@@ -62,6 +69,9 @@ Open http://localhost:8501 — show the architecture diagram on the home page.
 
 - **LLM quota hit (HTTP 429):** switch `LLM_MODEL=gemini-3-8-flash` in `.env`,
   restart the API, re-run. (`claude-*` ids are down until 2026-12-01.)
-- **DuckDuckGo blocked:** the web_search chain falls back to Jina+Bing
-  automatically (and Google Trends / Wikipedia still work keylessly).
+- **DuckDuckGo blocked:** the search chain falls back to Bing RSS automatically
+  (and Google Trends / Wikipedia / SEC EDGAR still work keylessly).
 - **Show something instantly:** the seeded campaigns + ROI page need no LLM at all.
+- **Verify the machine before going live:** `python .demo/verify_e2e.py` runs the
+  whole pipeline (create → run → HITL approve → KPI/ROI/optimization → traces)
+  against the live API and prints a pass/fail line per check.
