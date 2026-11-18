@@ -10,9 +10,10 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from adforge.config import get_settings
-from adforge.storage.base import Base
+
 # Import models so they register on Base.metadata
 from adforge.storage import models  # noqa: F401
+from adforge.storage.base import Base
 
 config = context.config
 if config.config_file_name is not None:

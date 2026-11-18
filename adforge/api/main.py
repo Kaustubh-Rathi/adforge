@@ -10,8 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from adforge.api.routes import campaigns, kpis, reviews, traces
 from adforge.config import get_settings
-from adforge.storage.session import dispose_engine, init_engine
 from adforge.storage.redis_client import close_redis
+from adforge.storage.session import dispose_engine, init_engine
 
 logger = logging.getLogger("adforge.api")
 
@@ -35,12 +35,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_settings = get_settings()
+_origins = [
+    origin.strip()
+    for origin in _settings.app_cors_origins.split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in prod
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_origins,
+    allow_credentials=bool(_origins),
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-AdForge-Tenant", "X-AdForge-Campaign",
+                   "X-AdForge-Reviewer", "X-API-Key"],
 )
 
 app.include_router(campaigns.router)
@@ -55,12 +62,20 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/")
-async def root() -> dict[str, str]:
+async def root() -> dict[str, object]:
     return {
         "name": "AdForge API",
         "docs": "/docs",
         "version": "0.1.0",
-        "agents": "research, creative_strategist, media_planner, kpi_analytics, roi_calculator, compliance, optimization",
+        "agents": [
+            "research",
+            "creative_strategist",
+            "media_planner",
+            "kpi_analytics",
+            "roi_calculator",
+            "compliance",
+            "optimization",
+        ],
     }
 
 
@@ -69,8 +84,8 @@ def run() -> None:
     settings = get_settings()
     uvicorn.run(
         "adforge.api.main:app",
-        host="0.0.0.0",
-        port=8000,
+        host=settings.api_host,
+        port=settings.api_port,
         reload=settings.app_env == "dev",
     )
 

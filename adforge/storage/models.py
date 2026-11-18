@@ -1,12 +1,23 @@
 """ORM models — Campaign, AgentRun, KpiSnapshot, AuditEvent, CreativeArtifact."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Float, Integer, String, Text, ForeignKey, Boolean
-from sqlalchemy.dialects.postgresql import UUID as PgUUID, JSONB
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from adforge.storage.base import Base, TenantMixin, TimestampMixin
@@ -31,9 +42,9 @@ class Campaign(Base, TenantMixin, TimestampMixin):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    agent_runs: Mapped[list["AgentRun"]] = relationship(back_populates="campaign")
-    kpi_snapshots: Mapped[list["KpiSnapshotRow"]] = relationship(back_populates="campaign")
-    creatives: Mapped[list["CreativeArtifact"]] = relationship(back_populates="campaign")
+    agent_runs: Mapped[list[AgentRun]] = relationship(back_populates="campaign")
+    kpi_snapshots: Mapped[list[KpiSnapshotRow]] = relationship(back_populates="campaign")
+    creatives: Mapped[list[CreativeArtifact]] = relationship(back_populates="campaign")
 
 
 class AgentRun(Base, TenantMixin, TimestampMixin):
@@ -72,6 +83,12 @@ class KpiSnapshotRow(Base, TenantMixin, TimestampMixin):
     """
 
     __tablename__ = "kpi_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "campaign_id", "channel", "platform_date",
+            name="uq_kpi_daily",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
     campaign_id: Mapped[UUID] = mapped_column(
@@ -90,6 +107,10 @@ class KpiSnapshotRow(Base, TenantMixin, TimestampMixin):
     cpa: Mapped[float] = mapped_column(Float, default=0.0)
     cpm: Mapped[float] = mapped_column(Float, default=0.0)
     roas: Mapped[float] = mapped_column(Float, default=0.0)
+    downloads: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[str] = mapped_column(String(32), default="unknown")
+    is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    platform_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     campaign: Mapped[Campaign] = relationship(back_populates="kpi_snapshots")

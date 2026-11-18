@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -12,9 +11,9 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adforge.api.deps import get_db, get_tenant, get_tenant_scope
+from adforge.graph.state import clear_thread, get_compiled_graph, thread_id_for
 from adforge.guardrails.contracts import CampaignBrief
 from adforge.guardrails.data_isolation import TenantScope
-from adforge.graph.state import get_compiled_graph
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
@@ -45,7 +44,7 @@ async def create_campaign(
     await db.execute(
         sql_text(
             "INSERT INTO campaigns (id, tenant_id, name, brief, status) "
-            "VALUES (:id, :tid, :name, :brief::jsonb, 'draft')"
+            "VALUES (:id, :tid, :name, CAST(:brief AS JSONB), 'draft')"
         ),
         {
             "id": str(campaign_id),
@@ -137,31 +136,65 @@ async def run_campaign(
         "tenant_id": scope.tenant_id,
         "campaign_id": str(campaign_id),
         "brief": brief,
+        "approval_token": None,
         "errors": [],
     }
 
     # Update campaign status to 'designing'
     await db.execute(
-        sql_text("UPDATE campaigns SET status = 'designing' WHERE id = :id"),
-        {"id": str(campaign_id)},
+        sql_text(
+            "UPDATE campaigns SET status = 'designing' WHERE id = :id AND tenant_id = :tid"
+        ),
+        {"id": str(campaign_id), "tid": scope.tenant_id},
     )
+    await db.commit()
 
-    # Run the graph
-    graph = get_compiled_graph()
-    config = {"configurable": {"thread_id": f"{campaign_id}:{initial['request_id']}"}}
+    # Run the graph from a clean checkpoint. Re-running a previously approved
+    # campaign must never inherit its old approval token or review state.
+    graph = await get_compiled_graph()
+    config = {"configurable": {"thread_id": thread_id_for(campaign_id)}}
+    await clear_thread(campaign_id)
     final_state = await graph.ainvoke(initial, config=config)
 
-    # Update campaign status to 'live' if no errors
-    if not final_state.get("errors"):
-        await db.execute(
-            sql_text(
-                "UPDATE campaigns SET status = 'live', started_at = :started WHERE id = :id"
-            ),
-            {"id": str(campaign_id), "started": datetime.now(timezone.utc)},
-        )
+    # The graph pauses at the human_review interrupt. Persist the campaign
+    # status so the review queue can find it.
+    snapshot = await graph.aget_state(config)
+    pending = set(snapshot.next or ())
+    review_status = final_state.get("review_status")
+
+    if "human_review" in pending:
+        new_status = "reviewing"
+    elif review_status == "auto_blocked" or (
+        review_status == "rejected" and final_state.get("revision_count", 0) >= 3
+    ):
+        new_status = "blocked"
+    elif final_state.get("errors"):
+        new_status = "failed"
+    else:
+        # Approval authorises publishing; the campaign is not live until the
+        # explicit publish endpoint succeeds against a configured adapter.
+        new_status = "approved"
+
+    await db.execute(
+        sql_text(
+            "UPDATE campaigns SET status = :status WHERE id = :id AND tenant_id = :tid"
+        ),
+        {"id": str(campaign_id), "tid": scope.tenant_id, "status": new_status},
+    )
+
+    # ``__interrupt__`` carries non-JSON-serialisable LangGraph objects.
+    # The approval token is a bearer credential: it must never leave the
+    # server except through the approval-gated publish path.
+    public_state = {
+        k: v
+        for k, v in final_state.items()
+        if not k.startswith("__") and k != "approval_token"
+    }
 
     return {
         "campaign_id": str(campaign_id),
         "request_id": initial["request_id"],
-        "final_state": final_state,
+        "status": new_status,
+        "paused_for_review": new_status == "reviewing",
+        "final_state": public_state,
     }

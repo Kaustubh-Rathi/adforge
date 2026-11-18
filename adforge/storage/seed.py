@@ -7,20 +7,28 @@ from __future__ import annotations
 import asyncio
 import json
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import text
 
-from adforge.storage.session import init_engine, dispose_engine, get_session_factory
+from adforge.config import get_settings
+from adforge.storage import session as session_module
 
 EXAMPLES_FILE = Path(__file__).parent.parent / "examples" / "campaigns.json"
 
 
 async def seed() -> None:
-    init_engine()
-    factory = get_session_factory()
+    settings = get_settings()
+    if settings.app_env not in ("dev", "test"):
+        raise RuntimeError(
+            "Refusing to seed sample campaigns outside dev/test: "
+            f"APP_ENV={settings.app_env!r}. Seeded rows are fabricated and must "
+            "never be presented as real performance data."
+        )
+    session_module.init_engine()
+    factory = session_module.get_session_factory()
     examples = json.loads(EXAMPLES_FILE.read_text())
 
     async with factory() as session:
@@ -30,7 +38,7 @@ async def seed() -> None:
             await session.execute(
                 text(
                     "INSERT INTO campaigns (id, tenant_id, name, brief, status, started_at) "
-                    "VALUES (:id, :tid, :name, :brief::jsonb, :status, :started)"
+                    "VALUES (:id, :tid, :name, CAST(:brief AS JSONB), :status, :started)"
                 ),
                 {
                     "id": str(campaign_id),
@@ -38,7 +46,7 @@ async def seed() -> None:
                     "name": ex["name"],
                     "brief": json.dumps(ex["brief"]),
                     "status": "live",
-                    "started": datetime.now(timezone.utc) - timedelta(days=ex["days_live"]),
+                    "started": datetime.now(UTC) - timedelta(days=ex["days_live"]),
                 },
             )
 
@@ -50,14 +58,16 @@ async def seed() -> None:
                     spend = round(clicks * random.uniform(0.8, 2.5), 2)
                     conversions = int(clicks * random.uniform(0.03, 0.10))
                     revenue = round(conversions * ex["avg_conversion_value"], 2)
-                    captured = datetime.now(timezone.utc) - timedelta(days=day_offset)
+                    captured = datetime.now(UTC) - timedelta(days=day_offset)
                     await session.execute(
                         text(
                             "INSERT INTO kpi_snapshots "
                             "(tenant_id, campaign_id, channel, impressions, clicks, spend_usd, "
-                            " conversions, revenue_usd, ctr, cvr, cpc, cpa, cpm, roas, captured_at) "
+                            " conversions, revenue_usd, ctr, cvr, cpc, cpa, cpm, roas, "
+                            " source, is_mock, platform_date, captured_at) "
                             "VALUES (:tid, :cid, :ch, :imp, :clk, :spd, :cnv, :rev, "
-                            "        :ctr, :cvr, :cpc, :cpa, :cpm, :roas, :cap)"
+                            "        :ctr, :cvr, :cpc, :cpa, :cpm, :roas, "
+                            "        'seed', TRUE, :pdate, :cap)"
                         ),
                         {
                             "tid": tenant_id, "cid": str(campaign_id), "ch": channel,
@@ -69,6 +79,7 @@ async def seed() -> None:
                             "cpa": round(spend / conversions, 2) if conversions else 0.0,
                             "cpm": round(spend / impressions * 1000, 2),
                             "roas": round(revenue / spend, 2) if spend else 0.0,
+                            "pdate": captured.date(),
                             "cap": captured,
                         },
                     )
@@ -87,7 +98,7 @@ async def seed() -> None:
 
         await session.commit()
 
-    await dispose_engine()
+    await session_module.dispose_engine()
     print(f"Seeded {len(examples)} example campaigns with KPI snapshots.")
 
 

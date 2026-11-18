@@ -1,12 +1,11 @@
 """KPIs API — query KPI snapshots for the dashboard."""
 from __future__ import annotations
 
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +23,7 @@ async def list_kpis(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """List KPI snapshots for a campaign. Optionally filter by channel."""
-    since = datetime.now(timezone.utc) - timedelta(days=days_back)
+    since = (datetime.now(UTC) - timedelta(days=days_back)).date()
     if channel:
         result = await db.execute(
             sql_text(
@@ -32,7 +31,7 @@ async def list_kpis(
                 "       conversions, revenue_usd, ctr, cvr, cpc, cpa, cpm, roas, captured_at "
                 "FROM kpi_snapshots "
                 "WHERE tenant_id = :tid AND campaign_id = :cid AND channel = :ch "
-                "AND captured_at >= :since ORDER BY captured_at ASC"
+                "AND platform_date >= :since ORDER BY platform_date ASC, captured_at ASC"
             ),
             {"tid": tenant_id, "cid": str(campaign_id), "ch": channel, "since": since},
         )
@@ -42,8 +41,8 @@ async def list_kpis(
                 "SELECT id, channel, campaign_external_id, impressions, clicks, spend_usd, "
                 "       conversions, revenue_usd, ctr, cvr, cpc, cpa, cpm, roas, captured_at "
                 "FROM kpi_snapshots "
-                "WHERE tenant_id = :tid AND campaign_id = :cid AND captured_at >= :since "
-                "ORDER BY captured_at ASC"
+                "WHERE tenant_id = :tid AND campaign_id = :cid AND platform_date >= :since "
+                "ORDER BY platform_date ASC, captured_at ASC"
             ),
             {"tid": tenant_id, "cid": str(campaign_id), "since": since},
         )
@@ -77,7 +76,7 @@ async def aggregate_kpis(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Aggregate KPIs by channel or by day."""
-    col = "channel" if group_by == "channel" else "DATE(captured_at)"
+    col = "channel" if group_by == "channel" else "platform_date"
     result = await db.execute(
         sql_text(
             f"SELECT {col} AS bucket, "
@@ -98,7 +97,7 @@ async def aggregate_kpis(
         impressions = int(r.impressions or 0)
         clicks = int(r.clicks or 0)
         buckets.append({
-            "bucket": r.bucket if not isinstance(r.bucket, datetime) else r.bucket.isoformat(),
+            "bucket": r.bucket.isoformat() if hasattr(r.bucket, "isoformat") else r.bucket,
             "impressions": impressions,
             "clicks": clicks,
             "spend_usd": spend,

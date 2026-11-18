@@ -5,13 +5,11 @@
 """
 from __future__ import annotations
 
-from typing import Optional
-
 import redis.asyncio as redis
 
 from adforge.config import get_settings
 
-_redis: Optional[redis.Redis] = None
+_redis: redis.Redis | None = None
 
 
 async def get_redis() -> redis.Redis:
@@ -35,5 +33,6 @@ async def get_redis_async() -> redis.Redis:
 async def close_redis() -> None:
     global _redis
     if _redis is not None:
-        await _redis.close()
+        close = getattr(_redis, "aclose", None) or _redis.close
+        await close()
         _redis = None

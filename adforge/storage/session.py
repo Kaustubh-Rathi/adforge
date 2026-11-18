@@ -6,8 +6,8 @@ query — see ``guardrails.data_isolation``.
 """
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -18,13 +18,15 @@ from sqlalchemy.ext.asyncio import (
 
 from adforge.config import get_settings
 
-_engine: Optional[AsyncEngine] = None
-_session_factory: Optional[async_sessionmaker[AsyncSession]] = None
+_engine: AsyncEngine | None = None
+_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 def init_engine(echo: bool = False) -> None:
     """Initialise the global engine. Call once at app startup."""
     global _engine, _session_factory
+    if _engine is not None and _session_factory is not None:
+        return
     settings = get_settings()
     _engine = create_async_engine(
         settings.database_url,
