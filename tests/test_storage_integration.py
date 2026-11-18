@@ -138,3 +138,54 @@ class TestSeed:
             (today - timedelta(days=1)).isoformat(),
         }
         assert all(row["source"] == "seed" for row in rows["snapshots"])
+
+    async def test_reseeding_is_idempotent(
+        self, db_env, tmp_path, monkeypatch, capsys
+    ):
+        """`make seed` twice must not clone the demo campaigns and their KPIs."""
+        examples = [
+            {
+                "tenant_id": "seed_tenant",
+                "name": "Seed Campaign",
+                "days_live": 2,
+                "avg_conversion_value": 100.0,
+                "brief": {
+                    "product_name": "Seed Product",
+                    "product_description": "A seeded product.",
+                    "target_audience": "Developers",
+                    "budget_usd": 5000.0,
+                    "duration_days": 2,
+                    "channels_hint": ["google", "linkedin"],
+                },
+            }
+        ]
+        examples_file = tmp_path / "campaigns.json"
+        examples_file.write_text(json.dumps(examples), encoding="utf-8")
+        monkeypatch.setattr(seed_module, "EXAMPLES_FILE", examples_file)
+
+        await seed_module.seed()
+        await seed_module.seed()
+        capsys.readouterr()
+
+        session_module.init_engine()
+        factory = session_module.get_session_factory()
+        async with factory() as session:
+            campaigns = (
+                await session.execute(
+                    text("SELECT COUNT(*) FROM campaigns WHERE tenant_id = 'seed_tenant'")
+                )
+            ).scalar_one()
+            kpi_count = (
+                await session.execute(
+                    text("SELECT COUNT(*) FROM kpi_snapshots WHERE tenant_id = 'seed_tenant'")
+                )
+            ).scalar_one()
+
+        assert campaigns == 1
+        assert kpi_count == 4  # not 8: the second run replaces, not appends
+
+    def test_seed_campaign_ids_are_stable(self):
+        first = seed_module._campaign_id("acme", "Launch")
+        assert first == seed_module._campaign_id("acme", "Launch")
+        assert first != seed_module._campaign_id("acme", "Other")
+        assert first != seed_module._campaign_id("other", "Launch")

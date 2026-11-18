@@ -191,11 +191,14 @@ async def aggregate_kpis(
             f"SELECT {col} AS bucket, "
             " SUM(impressions) AS impressions, SUM(clicks) AS clicks, "
             " SUM(spend_usd) AS spend_usd, SUM(conversions) AS conversions, "
-            " SUM(revenue_usd) AS revenue_usd "
+            " SUM(revenue_usd) AS revenue_usd, "
+            " BOOL_OR(is_mock) AS is_mock, BOOL_AND(is_mock) AS all_simulated "
             "FROM kpi_snapshots "
             "WHERE tenant_id = :tid AND campaign_id = :cid "
             f"GROUP BY {col} ORDER BY bucket"
         )
         result = await session.execute(q, {"tid": tenant_id, "cid": campaign_id})
         rows = [_jsonable_row(dict(r._mapping)) for r in result]
+    # A bucket mixing real and simulated rows is never reported as fully real:
+    # is_mock stays True, so downstream consumers disclose it.
     return json.dumps({"group_by": group_by, "buckets": rows})

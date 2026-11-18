@@ -28,7 +28,8 @@ async def list_kpis(
         result = await db.execute(
             sql_text(
                 "SELECT id, channel, campaign_external_id, impressions, clicks, spend_usd, "
-                "       conversions, revenue_usd, ctr, cvr, cpc, cpa, cpm, roas, captured_at "
+                "       conversions, revenue_usd, ctr, cvr, cpc, cpa, cpm, roas, is_mock, "
+                "       captured_at "
                 "FROM kpi_snapshots "
                 "WHERE tenant_id = :tid AND campaign_id = :cid AND channel = :ch "
                 "AND platform_date >= :since ORDER BY platform_date ASC, captured_at ASC"
@@ -39,7 +40,8 @@ async def list_kpis(
         result = await db.execute(
             sql_text(
                 "SELECT id, channel, campaign_external_id, impressions, clicks, spend_usd, "
-                "       conversions, revenue_usd, ctr, cvr, cpc, cpa, cpm, roas, captured_at "
+                "       conversions, revenue_usd, ctr, cvr, cpc, cpa, cpm, roas, is_mock, "
+                "       captured_at "
                 "FROM kpi_snapshots "
                 "WHERE tenant_id = :tid AND campaign_id = :cid AND platform_date >= :since "
                 "ORDER BY platform_date ASC, captured_at ASC"
@@ -52,6 +54,7 @@ async def list_kpis(
             "id": str(r.id),
             "channel": r.channel,
             "campaign_external_id": r.campaign_external_id,
+            "is_mock": bool(r.is_mock),
             "impressions": r.impressions,
             "clicks": r.clicks,
             "spend_usd": float(r.spend_usd),
@@ -82,7 +85,8 @@ async def aggregate_kpis(
             f"SELECT {col} AS bucket, "
             "       SUM(impressions) AS impressions, SUM(clicks) AS clicks, "
             "       SUM(spend_usd) AS spend_usd, SUM(conversions) AS conversions, "
-            "       SUM(revenue_usd) AS revenue_usd "
+            "       SUM(revenue_usd) AS revenue_usd, "
+            "       BOOL_OR(is_mock) AS any_mock, BOOL_AND(is_mock) AS all_mock "
             "FROM kpi_snapshots "
             "WHERE tenant_id = :tid AND campaign_id = :cid "
             f"GROUP BY {col} ORDER BY bucket"
@@ -103,6 +107,9 @@ async def aggregate_kpis(
             "spend_usd": spend,
             "conversions": conversions,
             "revenue_usd": revenue,
+            # A bucket mixing simulated and real rows is never reported as real.
+            "is_mock": bool(r.any_mock),
+            "all_simulated": bool(r.all_mock),
             "roas": round(revenue / spend, 2) if spend else 0.0,
             "cpa": round(spend / conversions, 2) if conversions else 0.0,
             "ctr": round(clicks / impressions, 4) if impressions else 0.0,

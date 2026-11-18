@@ -11,6 +11,7 @@ import streamlit as st
 from adforge.dashboard import api_client as api
 from adforge.dashboard.theme import (
     ACCENT,
+    af_caption,
     af_metric,
     af_section,
     inject_css,
@@ -89,6 +90,22 @@ buckets = by_channel.get("buckets", [])
 if not buckets:
     st.info("No KPI data yet - run the agent graph from the Campaigns page.")
     st.stop()
+
+# Provenance: the API flags any bucket containing simulated rows, so the page
+# never presents mock figures as measured ones.
+_simulated_buckets = [b for b in buckets if b.get("is_mock")]
+_all_simulated = bool(buckets) and all(b.get("all_simulated") for b in buckets)
+if _simulated_buckets:
+    _channels = ", ".join(sorted(str(b.get("bucket")) for b in _simulated_buckets))
+    af_caption(
+        f"Simulated data: {_channels} "
+        f"{'are' if len(_simulated_buckets) > 1 else 'is'} generated mock KPI rows "
+        "(is_mock=true), not platform measurements. "
+        "The ROI arithmetic is real; the inputs are not."
+        if not _all_simulated
+        else f"Simulated data: every channel ({_channels}) uses generated mock KPI "
+        "rows (is_mock=true). The ROI arithmetic is real; the inputs are not."
+    )
 
 # Top metrics
 totals = {
@@ -197,6 +214,7 @@ for b in buckets:
         "Revenue (USD)": b["revenue_usd"],
         "CPA (USD)": b["cpa"],
         "CTR (%)": b["ctr"] * 100,
+        "Data": "Simulated" if b.get("is_mock") else "Measured",
     })
 
 df = pd.DataFrame(chart_data)

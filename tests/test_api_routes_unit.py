@@ -120,6 +120,7 @@ class TestKpiRoutes:
             cpa=5.0,
             cpm=50.0,
             roas=4.0,
+            is_mock=False,
             captured_at=datetime(2026, 11, 1, tzinfo=UTC),
         )
 
@@ -134,6 +135,7 @@ class TestKpiRoutes:
         )
         assert all_rows["count"] == 1
         assert all_rows["snapshots"][0]["captured_at"].startswith("2026-11-01")
+        assert all_rows["snapshots"][0]["is_mock"] is False
 
         filtered = await kpis.list_kpis(
             campaign_id,
@@ -144,6 +146,27 @@ class TestKpiRoutes:
         )
         assert filtered["snapshots"][0]["channel"] == "google"
 
+    async def test_list_kpis_query_selects_the_mock_flag(self):
+        """Provenance has to reach the API, or the demo cannot prove it is mock."""
+        db = _FakeDb(_Result([self._row()]))
+        await kpis.list_kpis(
+            uuid4(), days_back=7, channel=None, tenant_id="acme", db=db
+        )
+        statement, _ = db.calls[0]
+        assert "is_mock" in statement
+
+    async def test_list_kpis_discloses_mock_rows(self):
+        mock_row = self._row()
+        mock_row.is_mock = True
+        result = await kpis.list_kpis(
+            uuid4(),
+            days_back=7,
+            channel=None,
+            tenant_id="acme",
+            db=_FakeDb(_Result([mock_row])),
+        )
+        assert result["snapshots"][0]["is_mock"] is True
+
     async def test_aggregate_kpis_computes_ratios_and_handles_dates(self):
         rows = [
             SimpleNamespace(
@@ -153,6 +176,8 @@ class TestKpiRoutes:
                 spend_usd=50.0,
                 conversions=10,
                 revenue_usd=200.0,
+                any_mock=False,
+                all_mock=False,
             ),
             SimpleNamespace(
                 bucket=None,
@@ -161,6 +186,8 @@ class TestKpiRoutes:
                 spend_usd=0.0,
                 conversions=0,
                 revenue_usd=0.0,
+                any_mock=None,
+                all_mock=None,
             ),
         ]
 
@@ -173,9 +200,32 @@ class TestKpiRoutes:
         assert first["roas"] == 4.0
         assert first["cpa"] == 5.0
         assert first["ctr"] == 0.1
+        assert first["is_mock"] is False
+        assert first["all_simulated"] is False
         assert empty["roas"] == 0.0
         assert empty["cpa"] == 0.0
         assert empty["ctr"] == 0.0
+
+    async def test_aggregate_flags_a_partly_mocked_bucket(self):
+        """A bucket mixing measured and simulated rows must not read as real."""
+        rows = [
+            SimpleNamespace(
+                bucket="google",
+                impressions=1000,
+                clicks=100,
+                spend_usd=50.0,
+                conversions=10,
+                revenue_usd=200.0,
+                any_mock=True,
+                all_mock=False,
+            ),
+        ]
+        result = await kpis.aggregate_kpis(
+            uuid4(), group_by="channel", tenant_id="acme", db=_FakeDb(_Result(rows))
+        )
+        bucket = result["buckets"][0]
+        assert bucket["is_mock"] is True
+        assert bucket["all_simulated"] is False
 
 
 class TestTraceRoutes:

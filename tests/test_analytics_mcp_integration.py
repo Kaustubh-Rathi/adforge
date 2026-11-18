@@ -135,6 +135,8 @@ class TestAnalyticsMcp:
             )
         )
         assert {b["bucket"] for b in by_channel["buckets"]} == {"google", "linkedin"}
+        # Provenance travels with the aggregate: real rows must not be flagged.
+        assert all(b["is_mock"] is False for b in by_channel["buckets"])
 
         by_day = json.loads(
             await analytics.aggregate_kpis(
