@@ -76,6 +76,27 @@ class PolicyViolation(GuardrailError):
         super().__init__(msg)
 
 
+class LLMTransportError(GuardrailError):
+    """A transient LLM transport failure (timeout, 429, 5xx, connection reset).
+
+    Retryable — ``BaseAgent`` wraps these in a bounded exponential backoff.
+    """
+
+
+class LLMQuotaExceededError(LLMTransportError):
+    """The provider rejected a call because its quota is exhausted (HTTP 429).
+
+    Distinct from a short-lived rate limit: retrying in a tight loop only burns
+    more of the allowance and cannot succeed until the provider resets it.
+    ``BaseAgent`` does not retry this class; callers should surface the
+    provider's ``Retry-After`` hint (when present) to the operator.
+    """
+
+    def __init__(self, message: str, retry_after_seconds: float | None = None) -> None:
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(message)
+
+
 class McpToolError(GuardrailError):
     """A tool call against an MCP server failed in a way the agent should know about.
 

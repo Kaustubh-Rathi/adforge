@@ -18,10 +18,10 @@ prohibited personal attributes targeting, Google's prohibited content policy).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from uuid import UUID, uuid4
 
 import yaml
 
@@ -47,6 +47,71 @@ class PolicyRule:
     required_disclosure: str = ""
 
 
+_EXCLUSION_KEY_MARKERS = (
+    "exclude",
+    "exclusion",
+    "negative",
+    "block",
+    "avoid",
+    "do_not",
+    "do not",
+    "not_",
+)
+
+# Media plans carry prose fields that *describe* targeting policy rather than
+# perform it, e.g. ``constraint_notes`` and ``sensitive_attribute_policy``.
+# Scanning those as targeting turns "no targeting on race or religion" into a
+# false hard block. Skip the whole subtree for keys that signal commentary.
+_DESCRIPTIVE_KEY_MARKERS = (
+    "note",
+    "policy",
+    "comment",
+    "description",
+    "summary",
+    "rationale",
+    "constraint",
+    "guideline",
+    "disclaimer",
+    "explanation",
+    "justification",
+    "assumption",
+    "context",
+    "review",
+    "check",
+)
+
+
+def _collect_targeting_terms(
+    value: Any, *, excluded: bool = False
+) -> list[str]:
+    """Flatten positive audience-targeting strings, skipping non-targeting data.
+
+    Media plans legitimately contain entries such as
+    ``{"exclusions": ["race", "religion"]}`` or
+    ``{"sensitive_attribute_policy": "No targeting on race or religion"}``.
+    A naive keyword scan treats those as targeting and hard-blocks a compliant
+    campaign. Only positive targeting values are returned here; exclusion
+    subtrees and descriptive/commentary fields are ignored.
+    """
+    terms: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            key_text = str(key).lower()
+            child_skipped = excluded or any(
+                marker in key_text
+                for marker in (*_EXCLUSION_KEY_MARKERS, *_DESCRIPTIVE_KEY_MARKERS)
+            )
+            if not child_skipped:
+                terms.append(key_text)
+            terms.extend(_collect_targeting_terms(item, excluded=child_skipped))
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            terms.extend(_collect_targeting_terms(item, excluded=excluded))
+    elif isinstance(value, str) and not excluded:
+        terms.append(value.lower())
+    return terms
+
+
 @dataclass
 class PolicyEnforcer:
     """Rule-based compliance gate. Pure-Python so it's unit-testable."""
@@ -54,13 +119,13 @@ class PolicyEnforcer:
     rules: list[PolicyRule] = field(default_factory=list)
 
     @classmethod
-    def from_yaml(cls, path: Path) -> "PolicyEnforcer":
+    def from_yaml(cls, path: Path) -> PolicyEnforcer:
         data = yaml.safe_load(path.read_text()) or {"rules": []}
         rules = [PolicyRule(**r) for r in data["rules"]]
         return cls(rules=rules)
 
     @classmethod
-    def default(cls) -> "PolicyEnforcer":
+    def default(cls) -> PolicyEnforcer:
         """Load the bundled default ruleset."""
         rules_path = Path(__file__).parent / "policy_rules.yaml"
         if rules_path.exists():
@@ -103,7 +168,13 @@ class PolicyEnforcer:
         risk = "low"
 
         for rule in self.rules:
-            if rule.pattern.lower() in text:
+            # Rules are regex alternations (e.g. ``tobacco|cigarette|vape``).
+            # A plain substring check would never match them.
+            try:
+                matched = re.search(rule.pattern, text, flags=re.IGNORECASE) is not None
+            except re.error:
+                matched = rule.pattern.lower() in text
+            if matched:
                 if rule.tier == 1:
                     blocked.append(rule.rule_id)
                     risk = "critical"
@@ -119,16 +190,21 @@ class PolicyEnforcer:
 
         # Audience targeting policy check — Meta prohibits targeting on
         # personal attributes (race, sexual orientation, etc.) for housing/
-        # employment/credit ads.
+        # employment/credit ads. Only positive targeting terms are inspected;
+        # explicit exclusion lists must not trip the hard block.
         if audience_targeting:
             sensitive_categories = {"race", "ethnicity", "sexual_orientation", "religion"}
+            targeting_text = " ".join(_collect_targeting_terms(audience_targeting))
             for cat in sensitive_categories:
-                if cat in str(audience_targeting).lower():
+                if re.search(rf"\b{re.escape(cat)}\b", targeting_text):
                     blocked.append(f"TARGETING_{cat.upper()}")
                     risk = "critical"
                     flagged.append(f"Sensitive attribute targeting is prohibited: {cat}")
 
-        approved = not blocked and risk in ("low", "medium")
+        # Tier 2 (disclosure) and tier 3 (soft warning) remain approvable; only
+        # hard blocks make the creative unpublishable. The required disclosures
+        # are carried in the verdict for the publish step to append.
+        approved = not blocked and risk != "critical"
 
         return ComplianceVerdict(
             approved=approved,
