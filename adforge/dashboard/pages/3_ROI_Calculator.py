@@ -1,13 +1,67 @@
 """ROI Calculator page — the 'was it worth it?' verdict."""
 from __future__ import annotations
 
+import html
+from typing import Any
+
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from adforge.dashboard import api_client as api
+from adforge.dashboard.theme import (
+    ACCENT,
+    af_metric,
+    af_section,
+    inject_css,
+    status_color,
+)
 
-st.title("ROI Calculator")
-st.caption("The bottom line — was the campaign worth it?")
+inject_css()
+
+# The verdict banner is this page's one loud element; everything else stays quiet.
+st.markdown(
+    """
+    <style>
+    .af-verdict {
+      display: grid; grid-template-columns: minmax(220px, auto) 1fr; gap: 2rem;
+      align-items: center; background: var(--af-surface);
+      border: 1px solid var(--af-border); border-left: 6px solid var(--af-accent);
+      border-radius: var(--af-radius); box-shadow: var(--af-shadow);
+      padding: 1.5rem 1.75rem; margin: 0.6rem 0 1.1rem;
+    }
+    .af-verdict-word { font-size: 2.6rem; font-weight: 800; letter-spacing: -0.03em;
+      line-height: 1; }
+    .af-verdict-kicker { font-size: 0.8rem; font-weight: 600; color: var(--af-muted);
+      margin-bottom: 0.45rem; }
+    .af-verdict-stats { display: grid; grid-template-columns: repeat(4, auto); gap: 1.8rem; }
+    .af-verdict-stat-label { font-size: 0.76rem; font-weight: 600; color: var(--af-muted); }
+    .af-verdict-stat-value { font-size: 1.3rem; font-weight: 700; color: var(--af-heading);
+      font-variant-numeric: tabular-nums; margin-top: 0.15rem; letter-spacing: -0.01em; }
+    .af-verdict-why { grid-column: 1 / -1; font-size: 0.88rem; color: var(--af-body);
+      line-height: 1.55; border-top: 1px solid var(--af-border); padding-top: 0.8rem;
+      max-width: 88ch; }
+    @media (max-width: 900px) {
+      .af-verdict { grid-template-columns: 1fr; gap: 1rem; }
+      .af-verdict-stats { grid-template-columns: repeat(2, auto); }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+#: Verdict word -> badge token in the theme's status palette.
+_VERDICT_TOKENS = {"SCALE": "approved", "OPTIMIZE": "reviewing", "PAUSE": "blocked", "KILL": "failed"}
+
+_LAYOUT = {
+    "template": "plotly_white",
+    "margin": {"l": 8, "r": 8, "t": 40, "b": 8},
+    "font": {"family": "Inter, sans-serif", "size": 12, "color": "#475569"},
+    "plot_bgcolor": "#FFFFFF",
+    "paper_bgcolor": "#FFFFFF",
+}
+
+af_section("ROI verdict", "The bottom line across every measured channel — was it worth it?")
 
 try:
     campaigns = api.list_campaigns()
@@ -33,7 +87,7 @@ except Exception as e:
 
 buckets = by_channel.get("buckets", [])
 if not buckets:
-    st.info("No KPI data yet for this campaign. Run the agent graph first.")
+    st.info("No KPI data yet - run the agent graph from the Campaigns page.")
     st.stop()
 
 # Top metrics
@@ -58,27 +112,71 @@ elif blended_roas >= 1.0:
 else:
     recommendation, color = "KILL", "red"
 
-st.divider()
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Total Spend", f"${totals['spend']:,.2f}")
-with col2:
-    st.metric("Total Revenue", f"${totals['revenue']:,.2f}")
-with col3:
-    st.metric("Net Profit", f"${net_profit:+,.2f}")
-with col4:
-    st.metric("Blended ROAS", f"{blended_roas:.2f}x")
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("Total Conversions", f"{totals['conversions']:,}")
-with col2:
-    st.metric("Blended CPA", f"${blended_cpa:.2f}")
-with col3:
-    st.metric("Blended CTR", f"{blended_ctr*100:.2f}%")
+def _verdict_rationale() -> str:
+    """Latest roi_calculator rationale, if the agent has already run."""
+    try:
+        runs: list[dict[str, Any]] = api.get_agent_runs(campaign_id, agent_name="roi_calculator").get("runs", [])
+    except Exception:
+        return ""
+    for run in reversed(runs):
+        if run.get("status") == "succeeded":
+            payload = run.get("output_payload") or {}
+            rationale = str(payload.get("rationale") or "").strip()
+            if rationale:
+                return rationale
+    return ""
 
-st.divider()
-st.subheader(f"Recommendation: :{color}[{recommendation}]")
+
+verdict_color = status_color(_VERDICT_TOKENS[recommendation])
+why = _verdict_rationale()
+why_html = (
+    f'<div class="af-verdict-why"><b style="color:#0F172A">Agent rationale.</b> '
+    f'{html.escape(why)}</div>'
+    if why
+    else ""
+)
+st.markdown(
+    f'<div class="af-verdict" style="border-left-color:{verdict_color}">'
+    f'<div>'
+    f'<div class="af-verdict-kicker">Recommended action</div>'
+    f'<div class="af-verdict-word" style="color:{verdict_color}">{recommendation}</div>'
+    f'</div>'
+    f'<div class="af-verdict-stats">'
+    f'<div><div class="af-verdict-stat-label">Blended ROAS</div>'
+    f'<div class="af-verdict-stat-value">{blended_roas:.2f}x</div></div>'
+    f'<div><div class="af-verdict-stat-label">Net profit</div>'
+    f'<div class="af-verdict-stat-value" style="color:'
+    f'{status_color("approved") if net_profit >= 0 else status_color("failed")}">'
+    f'${net_profit:+,.2f}</div></div>'
+    f'<div><div class="af-verdict-stat-label">Spend</div>'
+    f'<div class="af-verdict-stat-value">${totals["spend"]:,.2f}</div></div>'
+    f'<div><div class="af-verdict-stat-label">Revenue</div>'
+    f'<div class="af-verdict-stat-value">${totals["revenue"]:,.2f}</div></div>'
+    f'</div>'
+    f'{why_html}'
+    f'</div>',
+    unsafe_allow_html=True,
+)
+
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    af_metric("Total spend", f"${totals['spend']:,.2f}")
+with m2:
+    af_metric("Total revenue", f"${totals['revenue']:,.2f}")
+with m3:
+    af_metric("Net profit", f"${net_profit:+,.2f}")
+with m4:
+    af_metric("Blended ROAS", f"{blended_roas:.2f}x")
+
+m5, m6, m7 = st.columns(3)
+with m5:
+    af_metric("Total conversions", f"{totals['conversions']:,}")
+with m6:
+    af_metric("Blended CPA", f"${blended_cpa:.2f}")
+with m7:
+    af_metric("Blended CTR", f"{blended_ctr*100:.2f}%")
+
 if recommendation == "SCALE":
     st.success("Campaign is profitable. Increase budget 20-50% on the best-performing channel.")
 elif recommendation == "OPTIMIZE":
@@ -88,10 +186,8 @@ elif recommendation == "PAUSE":
 else:
     st.error("Campaign is losing money. Kill it and redesign from scratch.")
 
-st.divider()
-st.subheader("Per-channel breakdown")
+af_section("Per-channel breakdown")
 
-# Bar chart: ROAS by channel
 chart_data = []
 for b in buckets:
     chart_data.append({
@@ -103,32 +199,55 @@ for b in buckets:
         "CTR (%)": b["ctr"] * 100,
     })
 
-import pandas as pd
 df = pd.DataFrame(chart_data)
+
+
+def _roas_verdict(roas: float) -> str:
+    if roas >= 4.0:
+        return "Scale"
+    if roas >= 2.0:
+        return "Optimize"
+    if roas >= 1.0:
+        return "Pause"
+    return "Kill"
+
+
+df["Verdict"] = df["ROAS"].apply(_roas_verdict)
+_verdict_colors = {
+    "Scale": status_color("approved"),
+    "Optimize": status_color("reviewing"),
+    "Pause": status_color("blocked"),
+    "Kill": status_color("failed"),
+}
 
 col_a, col_b = st.columns(2)
 with col_a:
-    fig = px.bar(df, x="Channel", y="ROAS", title="ROAS by Channel",
-                 color="ROAS", color_continuous_scale="RdYlGn")
+    fig = px.bar(df, x="Channel", y="ROAS", color="Verdict", title="ROAS by channel",
+                 color_discrete_map=_verdict_colors)
+    fig.update_layout(showlegend=False, **_LAYOUT)
+    fig.add_hline(y=4.0, line_dash="dot", line_color="#94A3B8", annotation_text="scale at 4x")
     st.plotly_chart(fig, use_container_width=True)
 with col_b:
     fig2 = px.bar(df, x="Channel", y=["Spend (USD)", "Revenue (USD)"],
-                  title="Spend vs Revenue by Channel", barmode="group")
+                  title="Spend vs revenue by channel", barmode="group",
+                  color_discrete_map={"Spend (USD)": "#94A3B8", "Revenue (USD)": ACCENT})
+    fig2.update_layout(**_LAYOUT)
     st.plotly_chart(fig2, use_container_width=True)
 
 st.dataframe(df, use_container_width=True, hide_index=True)
 
-st.divider()
-st.subheader("Time series (last 30 days)")
+af_section("Time series", "Daily spend and ROAS per channel, last 30 days.")
 try:
     kpis = api.get_kpis(campaign_id, days_back=30)
     df_ts = api.kpis_to_df(kpis)
     if not df_ts.empty:
         fig3 = px.line(df_ts, x="captured_at", y="spend_usd", color="channel",
-                       title="Daily Spend by Channel")
+                       title="Daily spend by channel")
+        fig3.update_layout(**_LAYOUT)
         st.plotly_chart(fig3, use_container_width=True)
         fig4 = px.line(df_ts, x="captured_at", y="roas", color="channel",
-                       title="Daily ROAS by Channel")
+                       title="Daily ROAS by channel")
+        fig4.update_layout(**_LAYOUT)
         st.plotly_chart(fig4, use_container_width=True)
     else:
         st.info("No time-series data yet.")
