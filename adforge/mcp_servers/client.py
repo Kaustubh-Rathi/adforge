@@ -2,7 +2,8 @@
 ``MultiServerMCPClient`` from ``langchain[mcp]``.
 
 This is the integration point with the open-source ecosystem:
-    - AdForge's 5 local MCP servers (research, ads, analytics, roi, compliance)
+    - AdForge's 7 local MCP servers (research, ads, analytics, roi,
+      compliance, public data, LinkedIn)
     - googleads/google-ads-mcp (official, read-only Google Ads)
     - Pipeboard remote MCPs (Meta + TikTok + Snap + Reddit, OAuth)
 
@@ -11,20 +12,41 @@ backed by the appropriate MCP server. Tools are cached per server name.
 """
 from __future__ import annotations
 
+import logging
+import sys
 from functools import lru_cache
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from adforge.config import get_settings
 
-ServerName = Literal["research", "ads", "analytics", "roi", "compliance", "google_ads_official"]
+if TYPE_CHECKING:
+    from langchain_mcp_adapters.client import MultiServerMCPClient
+
+logger = logging.getLogger("adforge.mcp")
+
+ServerName = Literal[
+    "research",
+    "ads",
+    "analytics",
+    "roi",
+    "compliance",
+    "public_data",
+    "linkedin",
+    "google_ads_official",
+    "meta",
+    "tiktok",
+    "snap",
+    "reddit",
+]
 
 
 @lru_cache
-def _build_client() -> "MultiServerMCPClient":  # type: ignore[name-defined]
+def _build_client() -> MultiServerMCPClient:
     """Construct a MultiServerMCPClient with all configured servers.
 
     Servers without credentials (e.g. Pipeboard when no token is set) are
-    skipped — the agent will fall back to mock mode.
+    skipped. Tools from a skipped server are simply unavailable; callers get an
+    explicit configuration error from the remaining tools.
     """
     from langchain_mcp_adapters.client import MultiServerMCPClient  # post-migration name
 
@@ -39,86 +61,88 @@ def _build_client() -> "MultiServerMCPClient":  # type: ignore[name-defined]
         servers["roi"] = {"transport": "sse", "url": s.mcp_url("roi")}
         servers["compliance"] = {"transport": "sse", "url": s.mcp_url("compliance")}
         servers["public_data"] = {"transport": "sse", "url": s.mcp_url("public_data")}
+        servers["linkedin"] = {"transport": "sse", "url": s.mcp_url("linkedin")}
     else:
-        # stdio transport for local dev / tests
-        servers["research"] = {
-            "transport": "stdio",
-            "command": "python",
-            "args": ["-m", "adforge.mcp_servers.runner", "research"],
-        }
-        servers["ads"] = {
-            "transport": "stdio",
-            "command": "python",
-            "args": ["-m", "adforge.mcp_servers.runner", "ads"],
-        }
-        servers["analytics"] = {
-            "transport": "stdio",
-            "command": "python",
-            "args": ["-m", "adforge.mcp_servers.runner", "analytics"],
-        }
-        servers["roi"] = {
-            "transport": "stdio",
-            "command": "python",
-            "args": ["-m", "adforge.mcp_servers.runner", "roi"],
-        }
-        servers["compliance"] = {
-            "transport": "stdio",
-            "command": "python",
-            "args": ["-m", "adforge.mcp_servers.runner", "compliance"],
-        }
-        servers["public_data"] = {
-            "transport": "stdio",
-            "command": "python",
-            "args": ["-m", "adforge.mcp_servers.runner", "public_data"],
-        }
+        # stdio transport for local dev / tests. Use the current interpreter
+        # so the MCP subprocess sees the same virtualenv + installed package.
+        for name in (
+            "research",
+            "ads",
+            "analytics",
+            "roi",
+            "compliance",
+            "public_data",
+            "linkedin",
+        ):
+            servers[name] = {
+                "transport": "stdio",
+                "command": sys.executable,
+                "args": ["-m", "adforge.mcp_servers.runner", name],
+            }
 
     # External servers — only include when configured
     if s.pipeboard_api_token:
-        servers["meta"] = {
-            "transport": "sse",
-            "url": s.pipeboard_meta_url,
-            "headers": {"Authorization": f"Bearer {s.pipeboard_api_token}"},
-        }
-        servers["tiktok"] = {
-            "transport": "sse",
-            "url": s.pipeboard_tiktok_url,
-            "headers": {"Authorization": f"Bearer {s.pipeboard_api_token}"},
-        }
+        for name, url in (
+            ("meta", s.pipeboard_meta_url),
+            ("tiktok", s.pipeboard_tiktok_url),
+            ("snap", s.pipeboard_snap_url),
+            ("reddit", s.pipeboard_reddit_url),
+        ):
+            servers[name] = {
+                "transport": "sse",
+                "url": url,
+                "headers": {"Authorization": f"Bearer {s.pipeboard_api_token}"},
+            }
 
     if s.google_application_credentials:
         # The official googleads/google-ads-mcp runs over streamable_http in
         # its own container (see docker-compose.yml).
         servers["google_ads_official"] = {
             "transport": "streamable_http",
-            "url": f"http://localhost:{s.mcp_google_ads_official_port}/mcp",
+            "url": s.mcp_google_ads_official_url
+            or f"{s.mcp_scheme}://{s.mcp_host}:{s.mcp_google_ads_official_port}/mcp",
         }
 
     return MultiServerMCPClient(servers)
 
 
-@lru_cache
-def _build_client_noop() -> list:  # pragma: no cover
-    """Used in test/dev when MCP servers aren't running — returns no tools."""
-    return []
+def _is_read_only(tool: object) -> bool:
+    """Fail closed: only tools explicitly annotated read-only are exposed."""
+    metadata = getattr(tool, "metadata", None) or {}
+    if not isinstance(metadata, dict):
+        return False
+    return (
+        metadata.get("readOnlyHint") is True
+        and metadata.get("destructiveHint") is not True
+    )
 
 
-async def get_mcp_tools(server: ServerName) -> list:
-    """Return the list of LangChain Tools exposed by the given MCP server.
+async def get_mcp_tools(server: ServerName, *, read_only: bool = True) -> list:
+    """Return LangChain Tools exposed by the given MCP server.
+
+    ``read_only`` defaults to ``True`` so an LLM-facing caller can never
+    receive a write tool. Only tools carrying the MCP ``readOnlyHint``
+    annotation are returned; unannotated tools fail closed. The orchestrator's
+    approval-gated publish path passes ``read_only=False`` explicitly.
 
     Returns an empty list if the server is unreachable or not configured.
-    The agent's tool-call code must handle the empty case gracefully.
     """
     s = get_settings()
-    # In test mode without guardrails, skip MCP entirely.
-    if not s.guardrails_active and s.app_env == "test":
+    if not s.mcp_enabled:
         return []
 
     try:
         client = _build_client()
-        return await client.get_tools(server)
+        tools = await client.get_tools(server_name=server)
     except Exception:
-        # Best-effort — agents should degrade gracefully to mock mode.
+        # Best-effort — agents degrade gracefully. Log so a misconfigured MCP
+        # server is visible instead of silently returning no tools.
+        logger.warning("MCP server %r unavailable", server, exc_info=True)
         return []
+
+    if read_only:
+        return [tool for tool in tools if _is_read_only(tool)]
+    return list(tools)
 
 
 def reset_mcp_client() -> None:

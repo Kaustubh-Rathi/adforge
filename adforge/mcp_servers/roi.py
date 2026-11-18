@@ -16,12 +16,12 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from adforge.mcp_servers.permissions import readonly
+from adforge.mcp_servers.permissions import READ_ONLY, readonly
 
 mcp = FastMCP("adforge-roi")
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def compute_roas(revenue_usd: float, spend_usd: float) -> str:
     if spend_usd <= 0:
@@ -29,7 +29,7 @@ async def compute_roas(revenue_usd: float, spend_usd: float) -> str:
     return json.dumps({"roas": round(revenue_usd / spend_usd, 4)})
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def compute_cpa(spend_usd: float, conversions: int) -> str:
     if conversions <= 0:
@@ -37,7 +37,7 @@ async def compute_cpa(spend_usd: float, conversions: int) -> str:
     return json.dumps({"cpa": round(spend_usd / conversions, 2)})
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def compute_payback_period(
     cac_usd: float, ltv_usd: float, gross_margin_pct: float
@@ -52,7 +52,7 @@ async def compute_payback_period(
     return json.dumps({"payback_period_days": round(cac_usd / daily_profit, 1)})
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def classify_recommendation(roas: float, payback_days: float | None = None) -> str:
     if roas >= 4.0 and (payback_days is None or payback_days < 30):

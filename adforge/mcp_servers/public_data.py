@@ -14,6 +14,9 @@ Tools exposed (all @readonly, all free / no-auth-where-possible):
     opencorporates_search(companies, n=10)  — OpenCorporates API (free tier, no key)
     wikipedia_search_direct(query, n=3)     — Wikipedia (no key) — duplicate of research MCP's
                                               but useful when called from non-research agents
+    sec_financials(ticker_or_cik, metric, ...) — SEC EDGAR XBRL company-concept API (no key,
+                                              requires declarative User-Agent)
+    wikipedia_pageviews(article, start, end, ...) — Wikimedia REST pageviews API (no key)
 
 These tools give the Research agent REAL public data without paid ad-platform
 credentials. When keys ARE configured (env vars), they're used; otherwise
@@ -29,14 +32,13 @@ External MCP repos referenced (see docs/RESEARCH.md):
 from __future__ import annotations
 
 import json
-import os
-from typing import Any
+from urllib.parse import quote
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 
 from adforge.config import get_settings
-from adforge.mcp_servers.permissions import readonly
+from adforge.mcp_servers.permissions import READ_ONLY, readonly
 
 mcp = FastMCP("adforge-public-data")
 
@@ -47,42 +49,38 @@ def _check_tenant(headers: dict[str, str] | None) -> str:
     return headers["X-AdForge-Tenant"]
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def similarweb_traffic(domain: str, headers: dict[str, str] | None = None) -> str:
     """Get website traffic + engagement stats for a domain.
 
-    Free tier via Composio Rube MCP (https://rube.composio.dev). Without
-    a SIMILARWEB_API_KEY env var, returns a deterministic mock so the
-    graph still runs.
+    Requires ``SIMILARWEB_API_KEY``; without it the tool returns an explicit
+    configuration error rather than fabricated traffic numbers.
     """
     _check_tenant(headers)
     s = get_settings()
     if not s.similarweb_api_key:
         return json.dumps({
             "domain": domain,
-            "mock": True,
-            "visits_30d": 1_250_000,
-            "bounce_rate": 0.42,
-            "avg_visit_duration_seconds": 215,
-            "top_country": "US",
-            "traffic_sources": {"search": 0.48, "direct": 0.31, "social": 0.12, "referral": 0.06, "mail": 0.03},
-            "top_competitors": ["competitor1.com", "competitor2.com"],
-            "note": "SIMILARWEB_API_KEY not set — returning deterministic mock.",
+            "error": "similarweb_not_configured",
+            "detail": "Set SIMILARWEB_API_KEY to enable traffic data.",
         })
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, trust_env=False
+    ) as client:
         resp = await client.get(
-            f"https://api.similarweb.com/v1/website/{domain}/total-traffic-and-engagement/visits",
+            f"{s.similarweb_api_base.rstrip('/')}/v1/website/{domain}"
+            "/total-traffic-and-engagement/visits",
             headers={"Authorization": f"Bearer {s.similarweb_api_key}"},
             params={"granularity": "monthly", "main_domain_only": "true"},
         )
         if resp.status_code != 200:
             return json.dumps({"error": f"SimilarWeb API {resp.status_code}: {resp.text[:200]}"})
         data = resp.json()
-    return json.dumps({"domain": domain, "raw": data, "mock": False})
+    return json.dumps({"domain": domain, "raw": data})
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def appstore_search(query: str, country: str = "us", headers: dict[str, str] | None = None) -> str:
     """Search the Apple App Store. Mirrors meyusufdemirci/app-store-operator.
@@ -90,9 +88,12 @@ async def appstore_search(query: str, country: str = "us", headers: dict[str, st
     Uses Apple's public search endpoint — no API key required.
     """
     _check_tenant(headers)
-    async with httpx.AsyncClient(timeout=20) as client:
+    s = get_settings()
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, trust_env=False
+    ) as client:
         resp = await client.get(
-            "https://itunes.apple.com/search",
+            f"{s.itunes_api_base.rstrip('/')}/search",
             params={"term": query, "country": country, "media": "software", "limit": 10},
         )
         if resp.status_code != 200:
@@ -114,14 +115,18 @@ async def appstore_search(query: str, country: str = "us", headers: dict[str, st
     return json.dumps({"query": query, "country": country, "apps": results})
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def appstore_reviews(app_id: int, country: str = "us", limit: int = 20, headers: dict[str, str] | None = None) -> str:
     """Fetch recent App Store reviews for an app. Public RSS endpoint."""
     _check_tenant(headers)
-    async with httpx.AsyncClient(timeout=20) as client:
+    s = get_settings()
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, trust_env=False
+    ) as client:
         resp = await client.get(
-            f"https://itunes.apple.com/{country}/rss/customerreviews/id={app_id}/sort=mostrecent/json",
+            f"{s.itunes_api_base.rstrip('/')}/{country}/rss/customerreviews"
+            f"/id={app_id}/sort=mostrecent/json",
         )
         if resp.status_code != 200:
             return json.dumps({"error": f"iTunes RSS {resp.status_code}"})
@@ -140,16 +145,18 @@ async def appstore_reviews(app_id: int, country: str = "us", limit: int = 20, he
     return json.dumps({"app_id": app_id, "country": country, "reviews": reviews, "count": len(reviews)})
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def ipinfo_lookup(ip: str, headers: dict[str, str] | None = None) -> str:
     """Look up IP geolocation + ASN. Uses ipinfo.io — 50k/month free tier."""
     _check_tenant(headers)
     s = get_settings()
     token = s.ipinfo_api_token
-    url = f"https://ipinfo.io/{ip}/json"
+    url = f"{s.ipinfo_api_base.rstrip('/')}/{ip}/json"
     params = {"token": token} if token else {}
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, trust_env=False
+    ) as client:
         resp = await client.get(url, params=params)
         if resp.status_code != 200:
             return json.dumps({"error": f"ipinfo API {resp.status_code}"})
@@ -162,11 +169,10 @@ async def ipinfo_lookup(ip: str, headers: dict[str, str] | None = None) -> str:
         "org": data.get("org"),  # e.g. "AS15169 Google LLC"
         "hostname": data.get("hostname"),
         "loc": data.get("loc"),  # "lat,lng"
-        "mock": False,
     })
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def abuseipdb_check(ip: str, headers: dict[str, str] | None = None) -> str:
     """Check IP reputation via AbuseIPDB. Free tier: 1000 checks/day."""
@@ -175,14 +181,14 @@ async def abuseipdb_check(ip: str, headers: dict[str, str] | None = None) -> str
     if not s.abuseipdb_api_key:
         return json.dumps({
             "ip": ip,
-            "mock": True,
-            "abuse_confidence_score": 0,
-            "total_reports": 0,
-            "note": "ABUSEIPDB_API_KEY not set — returning mock (clean).",
+            "error": "abuseipdb_not_configured",
+            "detail": "Set ABUSEIPDB_API_KEY to enable IP reputation checks.",
         })
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, trust_env=False
+    ) as client:
         resp = await client.get(
-            "https://api.abuseipdb.com/api/v2/check",
+            f"{s.abuseipdb_api_base.rstrip('/')}/check",
             headers={"Key": s.abuseipdb_api_key, "Accept": "application/json"},
             params={"ipAddress": ip, "maxAgeInDays": 90},
         )
@@ -197,11 +203,10 @@ async def abuseipdb_check(ip: str, headers: dict[str, str] | None = None) -> str
         "usage_type": data.get("usageType"),
         "isp": data.get("isp"),
         "domain": data.get("domain"),
-        "mock": False,
     })
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def github_repo_stats(repo: str, headers: dict[str, str] | None = None) -> str:
     """Fetch GitHub repo stats (stars, forks, open issues). Public API, no auth.
@@ -210,11 +215,16 @@ async def github_repo_stats(repo: str, headers: dict[str, str] | None = None) ->
     """
     _check_tenant(headers)
     s = get_settings()
-    gh_headers = {"User-Agent": "AdForge/0.3", "Accept": "application/vnd.github+json"}
+    gh_headers = {
+        "User-Agent": s.external_user_agent,
+        "Accept": "application/vnd.github+json",
+    }
     if s.github_token:
         gh_headers["Authorization"] = f"Bearer {s.github_token}"
-    async with httpx.AsyncClient(timeout=15, headers=gh_headers) as client:
-        resp = await client.get(f"https://api.github.com/repos/{repo}")
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, headers=gh_headers, trust_env=False
+    ) as client:
+        resp = await client.get(f"{s.github_api_base.rstrip('/')}/repos/{repo}")
         if resp.status_code != 200:
             return json.dumps({"error": f"GitHub API {resp.status_code}: {resp.text[:200]}"})
         data = resp.json()
@@ -235,7 +245,7 @@ async def github_repo_stats(repo: str, headers: dict[str, str] | None = None) ->
 # --------------------------------------------------------------------------- #
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def hackernews_top(
     story_type: str = "top", n: int = 10, headers: dict[str, str] | None = None
@@ -246,11 +256,16 @@ async def hackernews_top(
     Useful for trend detection — what's the dev/early-adopter crowd talking about?
     """
     _check_tenant(headers)
+    s = get_settings()
     if story_type not in ("top", "new", "best", "ask", "show", "job"):
         return json.dumps({"error": "story_type must be one of: top, new, best, ask, show, job"})
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        ids_resp = await client.get(f"https://hacker-news.firebaseio.com/v0/{story_type}stories.json")
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, trust_env=False
+    ) as client:
+        ids_resp = await client.get(
+            f"{s.hackernews_api_base.rstrip('/')}/{story_type}stories.json"
+        )
         if ids_resp.status_code != 200:
             return json.dumps({"error": f"HN API {ids_resp.status_code}"})
         ids = ids_resp.json()[:n]
@@ -258,7 +273,7 @@ async def hackernews_top(
         stories = []
         for story_id in ids:
             story_resp = await client.get(
-                f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json"
+                f"{s.hackernews_api_base.rstrip('/')}/item/{story_id}.json"
             )
             if story_resp.status_code == 200:
                 s_data = story_resp.json()
@@ -279,7 +294,7 @@ async def hackernews_top(
         })
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def reddit_search(
     query: str, subreddit: str = "all", n: int = 10,
@@ -291,14 +306,17 @@ async def reddit_search(
     Sort: relevance | hot | top | new | comments
     """
     _check_tenant(headers)
+    s = get_settings()
     if sort not in ("relevance", "hot", "top", "new", "comments"):
         return json.dumps({"error": "sort must be one of: relevance, hot, top, new, comments"})
 
     async with httpx.AsyncClient(
-        timeout=15, headers={"User-Agent": "AdForge/0.3 (research-agent)"}
+        timeout=s.external_http_timeout,
+        headers={"User-Agent": s.external_user_agent},
+        trust_env=False,
     ) as client:
         resp = await client.get(
-            f"https://www.reddit.com/r/{subreddit}/search.json",
+            f"{s.reddit_api_base.rstrip('/')}/r/{subreddit}/search.json",
             params={
                 "q": query, "sort": sort, "limit": n,
                 "restrict_sr": "true" if subreddit != "all" else "false",
@@ -330,7 +348,7 @@ async def reddit_search(
     })
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def stackexchange_search(
     query: str, site: str = "stackoverflow", n: int = 10,
@@ -343,9 +361,12 @@ async def stackexchange_search(
     Full list: https://api.stackexchange.com/docs/sites
     """
     _check_tenant(headers)
-    async with httpx.AsyncClient(timeout=15) as client:
+    s = get_settings()
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, trust_env=False
+    ) as client:
         resp = await client.get(
-            "https://api.stackexchange.com/2.3/search",
+            f"{s.stackexchange_api_base.rstrip('/')}/search",
             params={
                 "order": "desc", "sort": "relevance",
                 "intitle": query, "site": site, "pagesize": n,
@@ -372,54 +393,85 @@ async def stackexchange_search(
     })
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def producthunt_search(
     query: str, n: int = 10, headers: dict[str, str] | None = None
 ) -> str:
-    """Search Product Hunt via unofficial Algolia search. No auth required.
+    """Search Product Hunt via the official GraphQL API.
 
-    Useful for finding competitor products, their PH launch stats, and
-    community sentiment in the comments.
+    Requires ``PRODUCTHUNT_API_TOKEN``; without it the tool returns an explicit
+    configuration error rather than querying a different provider.
     """
     _check_tenant(headers)
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            "https://hn.algolia.com/api/v1/search",
-            params={
-                "query": query,
-                "tags": "story",
-                "hitsPerPage": n,
-            },
-        )
-        # NOTE: this is actually HackerNews Algolia search, not ProductHunt.
-        # ProductHunt requires GraphQL + OAuth. For v0.3 we use HN Algolia as
-        # a free alternative for "what are devs saying about X". A future
-        # version will add a real PH integration with the PH API.
-        if resp.status_code != 200:
-            return json.dumps({"error": f"Algolia API {resp.status_code}"})
-        data = resp.json()
+    s = get_settings()
+    if not s.producthunt_api_token:
+        return json.dumps({
+            "query": query,
+            "error": "producthunt_not_configured",
+            "detail": "Set PRODUCTHUNT_API_TOKEN to enable Product Hunt search.",
+        })
 
+    graphql = """
+        query SearchPosts($query: String!, $first: Int!) {
+          posts(first: $first, order: RANKING, search: $query) {
+            edges {
+              node {
+                id
+                name
+                tagline
+                url
+                votesCount
+                commentsCount
+                createdAt
+              }
+            }
+          }
+        }
+    """
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, trust_env=False
+    ) as client:
+        resp = await client.post(
+            s.producthunt_api_url,
+            headers={
+                "Authorization": f"Bearer {s.producthunt_api_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={"query": graphql, "variables": {"query": query, "first": n}},
+        )
+        if resp.status_code != 200:
+            return json.dumps({
+                "error": f"Product Hunt API {resp.status_code}: {resp.text[:200]}"
+            })
+        body = resp.json()
+
+    errors = body.get("errors")
+    if errors:
+        return json.dumps({"error": "producthunt_graphql_error", "detail": errors})
+    edges = (body.get("data") or {}).get("posts", {}).get("edges", [])
     hits = []
-    for hit in data.get("hits", [])[:n]:
+    for edge in edges[:n]:
+        node = edge.get("node") or {}
         hits.append({
-            "title": hit.get("title") or hit.get("story_title"),
-            "url": hit.get("url") or hit.get("story_url"),
-            "points": hit.get("points", 0),
-            "comments": hit.get("num_comments", 0),
-            "author": hit.get("author"),
-            "created_at": hit.get("created_at"),
-            "object_id": hit.get("objectID"),
+            "id": node.get("id"),
+            "title": node.get("name"),
+            "tagline": node.get("tagline"),
+            "url": node.get("url"),
+            "points": node.get("votesCount", 0),
+            "comments": node.get("commentsCount", 0),
+            "created_at": node.get("createdAt"),
         })
     return json.dumps({
         "query": query,
-        "source": "hn_algolia (ProductHunt requires GraphQL/OAuth — v0.4 TODO)",
+        "source": "producthunt",
         "hits": hits,
         "count": len(hits),
     })
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def opencorporates_search(
     query: str, n: int = 10, headers: dict[str, str] | None = None
@@ -430,9 +482,12 @@ async def opencorporates_search(
     Where are they incorporated? Who are the directors?"
     """
     _check_tenant(headers)
-    async with httpx.AsyncClient(timeout=15) as client:
+    s = get_settings()
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout, trust_env=False
+    ) as client:
         resp = await client.get(
-            "https://api.opencorporates.com/v0.4/companies/search",
+            f"{s.opencorporates_api_base.rstrip('/')}/companies/search",
             params={"q": query, "per_page": min(n, 30)},
         )
         if resp.status_code != 200:
@@ -456,7 +511,7 @@ async def opencorporates_search(
     })
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def wikipedia_search_direct(
     query: str, n: int = 3, headers: dict[str, str] | None = None
@@ -467,9 +522,14 @@ async def wikipedia_search_direct(
     Free, no API key. Same backend as research.wikipedia_search.
     """
     _check_tenant(headers)
-    async with httpx.AsyncClient(timeout=15, headers={"User-Agent": "AdForge/0.3"}) as client:
+    s = get_settings()
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout,
+        headers={"User-Agent": s.external_user_agent},
+        trust_env=False,
+    ) as client:
         resp = await client.get(
-            "https://en.wikipedia.org/w/api.php",
+            s.wikipedia_api_url,
             params={
                 "action": "opensearch", "search": query, "limit": n,
                 "namespace": "0", "format": "json", "origin": "*",
@@ -481,5 +541,135 @@ async def wikipedia_search_direct(
     if len(data) < 4:
         return json.dumps({"query": query, "results": []})
     titles, urls = data[1], data[3]
-    results = [{"title": t, "url": u} for t, u in zip(titles, urls)]
+    results = [{"title": t, "url": u} for t, u in zip(titles, urls, strict=False)]
     return json.dumps({"query": query, "results": results, "count": len(results)})
+
+
+# --------------------------------------------------------------------------- #
+# v0.4: Keyless structured-data tools (SEC EDGAR XBRL + Wikimedia REST)
+# --------------------------------------------------------------------------- #
+
+SEC_TICKER_MAP_URL = "https://www.sec.gov/files/company_tickers.json"
+
+
+@mcp.tool(annotations=READ_ONLY)
+@readonly
+async def sec_financials(
+    ticker_or_cik: str,
+    metric: str,
+    taxonomy: str = "us-gaap",
+    tag: str = "RevenueFromContractWithCustomerExcludingAssessedTax",
+    headers: dict[str, str] | None = None,
+) -> str:
+    """Fetch a company's reported financials from SEC EDGAR XBRL company-concept data.
+
+    Free, no API key, but SEC policy requires a declarative User-Agent (sent
+    automatically). ticker_or_cik accepts a ticker symbol (e.g. "AAPL") or a
+    CIK number; metric is a human-readable name echoed in the summary while
+    taxonomy + tag select the actual XBRL concept. Returns the most recent
+    8 reported (end, val) observations. A 404 means the company or tag has no
+    XBRL data — reported as an explicit error, never fabricated.
+    """
+    _check_tenant(headers)
+    s = get_settings()
+    identifier = ticker_or_cik.strip()
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout,
+        headers={"User-Agent": s.external_user_agent},
+        trust_env=False,
+    ) as client:
+        if identifier.isdigit():
+            cik = identifier.zfill(10)
+        else:
+            map_resp = await client.get(SEC_TICKER_MAP_URL)
+            if map_resp.status_code != 200:
+                return json.dumps({
+                    "error": f"SEC ticker map {map_resp.status_code}: {map_resp.text[:200]}"
+                })
+            ticker_upper = identifier.upper()
+            cik = None
+            for entry in map_resp.json().values():
+                if str(entry.get("ticker", "")).upper() == ticker_upper:
+                    cik = str(entry["cik_str"]).zfill(10)
+                    break
+            if cik is None:
+                return json.dumps({
+                    "error": "ticker_not_found",
+                    "detail": f"{identifier} is not in SEC company_tickers.json",
+                })
+
+        concept_resp = await client.get(
+            f"{s.sec_edgar_api_base.rstrip('/')}/xbrl/companyconcept"
+            f"/CIK{cik}/{taxonomy}/{tag}.json"
+        )
+        if concept_resp.status_code != 200:
+            return json.dumps({
+                "error": f"SEC EDGAR API {concept_resp.status_code}: {concept_resp.text[:200]}"
+            })
+        data = concept_resp.json()
+
+    units = data.get("units") or {}
+    unit = next(iter(units), None)
+    observations = [
+        {"end": o.get("end"), "val": o.get("val")}
+        for o in sorted(
+            units.get(unit, []), key=lambda o: str(o.get("end") or ""), reverse=True
+        )
+    ][:8]
+    return json.dumps({
+        "metric": metric,
+        "taxonomy": taxonomy,
+        "tag": tag,
+        "cik": data.get("cik"),
+        "entity_name": data.get("entityName"),
+        "label": data.get("label"),
+        "unit": unit,
+        "observations": observations,
+        "count": len(observations),
+    })
+
+
+@mcp.tool(annotations=READ_ONLY)
+@readonly
+async def wikipedia_pageviews(
+    article: str,
+    start: str,
+    end: str,
+    granularity: str = "daily",
+    headers: dict[str, str] | None = None,
+) -> str:
+    """Fetch Wikipedia article pageview counts via the Wikimedia REST API.
+
+    Free, no API key. start/end are YYYYMMDD dates (inclusive);
+    granularity is daily or monthly. A 404 means the article has no
+    pageview data — reported as an explicit error, never fabricated.
+    """
+    _check_tenant(headers)
+    s = get_settings()
+    url = (
+        f"{s.wikimedia_rest_api_base.rstrip('/')}/metrics/pageviews/per-article"
+        f"/en.wikipedia/all-access/user/{quote(article)}/{granularity}/{start}00/{end}00"
+    )
+    async with httpx.AsyncClient(
+        timeout=s.external_http_timeout,
+        headers={"User-Agent": s.external_user_agent},
+        trust_env=False,
+    ) as client:
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            return json.dumps({
+                "error": f"Wikimedia API {resp.status_code}: {resp.text[:200]}"
+            })
+        data = resp.json()
+
+    points = [
+        {"date": item.get("timestamp"), "views": int(item.get("views", 0))}
+        for item in data.get("items", [])
+    ]
+    return json.dumps({
+        "article": article,
+        "granularity": granularity,
+        "points": points,
+        "total_views": sum(p["views"] for p in points),
+        "count": len(points),
+    })

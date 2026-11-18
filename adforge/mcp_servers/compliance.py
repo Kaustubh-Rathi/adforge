@@ -16,13 +16,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from adforge.guardrails.policy import PolicyEnforcer
-from adforge.mcp_servers.permissions import readonly
+from adforge.mcp_servers.permissions import READ_ONLY, readonly
 
 mcp = FastMCP("adforge-compliance")
 _enforcer = PolicyEnforcer.default()
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def evaluate_creative(
     creative_text: str,
@@ -36,7 +36,7 @@ async def evaluate_creative(
     return verdict.model_dump_json()
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def list_blocked_terms(headers: dict[str, str] | None = None) -> str:
     """Return the list of tier-1 (hard-blocked) patterns."""
@@ -47,7 +47,7 @@ async def list_blocked_terms(headers: dict[str, str] | None = None) -> str:
     return json.dumps({"blocked": blocked})
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def list_required_disclosures(headers: dict[str, str] | None = None) -> str:
     """Return the list of tier-2 (require disclosure) rules."""

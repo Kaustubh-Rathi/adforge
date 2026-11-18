@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import sys
 
-
 SERVERS = {
     "research": "adforge.mcp_servers.research:mcp",
     "ads": "adforge.mcp_servers.ads:mcp",  # composite — wraps LinkedIn + delegates to google-ads-mcp + pipeboard
@@ -41,9 +40,11 @@ def run_server(name: str) -> None:
     mod = importlib.import_module(module_path)
     mcp = getattr(mod, attr)
 
-    # FastMCP picks up transport from env / args; default to sse so the API
-    # container can talk to us remotely.
+    # FastMCP reads host/port from its settings; ``run()`` only accepts the
+    # transport and mount path.
     transport = s.mcp_transport
+    if transport == "streamable_http":
+        transport = "streamable-http"
     if transport == "sse":
         port_map = {
             "research": s.mcp_research_port,
@@ -51,13 +52,12 @@ def run_server(name: str) -> None:
             "analytics": s.mcp_analytics_port,
             "roi": s.mcp_roi_port,
             "compliance": s.mcp_compliance_port,
-            "linkedin": s.mcp_ads_port + 10,
+            "linkedin": s.mcp_linkedin_port,
             "public_data": s.mcp_public_data_port,
         }
-        port = port_map.get(name, 9000)
-        mcp.run(transport="sse", port=port)
-    else:
-        mcp.run(transport=transport)
+        mcp.settings.host = s.mcp_bind_host
+        mcp.settings.port = port_map.get(name, s.mcp_bind_port)
+    mcp.run(transport=transport)
 
 
 if __name__ == "__main__":

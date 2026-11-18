@@ -1,36 +1,27 @@
 """Ads MCP server — composite that exposes Google/Meta/LinkedIn/TikTok ad tools.
 
-This is the agent-facing surface. Under the hood:
-    - Google Ads read path   → delegates to official googleads/google-ads-mcp
-    - Google Ads write path  → wraps google-ads-python directly (no MCP)
-    - Meta + TikTok          → delegates to Pipeboard remote MCP (OAuth)
-    - LinkedIn               → uses adforge.mcp_servers.ads.linkedin (our wrapper)
+READ tools (``@readonly``) are safe for agents. WRITE tools
+(``publish_campaign``, ``pause_campaign``, ``update_budget``) are
+``@write_operation(requires_approval=True)`` and are never exposed to the LLM.
 
-PERMISSIONS (v0.2+):
-    - All READ tools use @readonly — no approval needed.
-    - All WRITE tools (publish_campaign, pause_campaign, update_budget) use
-      @write_operation(requires_approval=True). They require a valid
-      X-AdForge-Approval-Token issued by the HITL review endpoint.
-    - The LLM is NEVER given write tool schemas in its prompt — only the
-      orchestrator's post-approval publish step can call them.
-
-For v1 we expose a thin set of tools. The actual MCP-to-MCP delegation is
-handled by ``adforge.mcp_servers.client.get_mcp_tools`` on the agent side.
+Publishing is delegated to a configured adapter (see ``writes.py``). There is
+no simulated success path: if writes are disabled or no adapter is configured,
+the tool returns an explicit error and nothing is launched.
 """
 from __future__ import annotations
 
 import json
-import secrets
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from adforge.mcp_servers.permissions import readonly, write_operation
+from adforge.mcp_servers.ads import writes
+from adforge.mcp_servers.permissions import READ_ONLY, WRITE, readonly, write_operation
 
 mcp = FastMCP("adforge-ads")
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 @readonly
 async def list_channels(headers: dict[str, str] | None = None) -> str:
     """Return the list of ad platforms AdForge supports."""
@@ -44,7 +35,7 @@ async def list_channels(headers: dict[str, str] | None = None) -> str:
     })
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 @write_operation(requires_approval=True)
 async def publish_campaign(
     channel: str,
@@ -56,41 +47,39 @@ async def publish_campaign(
 ) -> str:
     """Publish a campaign to the given ad platform. Returns the external campaign ID.
 
-    WRITE OPERATION — requires HITL approval. The orchestrator's publish
-    step calls this AFTER the human reviewer has approved the creative +
-    media plan. Without a valid X-AdForge-Approval-Token, this returns
-    ``{"error": "approval_required"}``.
+    WRITE OPERATION — requires HITL approval. The orchestrator calls this only
+    after a human reviewer approved the creative + media plan and the platform
+    adapter is explicitly configured.
     """
-    if budget_usd <= 0:
-        return json.dumps({"error": "budget must be positive"})
+    try:
+        result = await writes.publish_campaign(
+            channel=channel,
+            campaign_name=campaign_name,
+            budget_usd=budget_usd,
+            creative=creative,
+            audience=audience,
+        )
+    except writes.WriteGatewayError as exc:
+        return json.dumps({"error": "publish_failed", "detail": str(exc)})
+    return json.dumps(result)
 
-    # v1: return a mock external ID. Production: call the platform SDK.
-    external_id = f"{channel}_cpg_{secrets.token_hex(8)}"
-    return json.dumps({
-        "channel": channel,
-        "external_campaign_id": external_id,
-        "status": "pending_review" if channel == "linkedin" else "active",
-        "budget_usd": budget_usd,
-        "published_with_approval": True,
-    })
 
-
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 @write_operation(requires_approval=True)
 async def pause_campaign(
     channel: str, external_campaign_id: str, headers: dict[str, str] | None = None
 ) -> str:
-    """Pause a live campaign. Used by the Optimization agent — but only after
-    a human reviewer approves the pause action."""
-    return json.dumps({
-        "channel": channel,
-        "external_campaign_id": external_campaign_id,
-        "status": "paused",
-        "paused_with_approval": True,
-    })
+    """Pause a live campaign after a human reviewer approves the pause."""
+    try:
+        result = await writes.pause_campaign(
+            channel=channel, external_campaign_id=external_campaign_id
+        )
+    except writes.WriteGatewayError as exc:
+        return json.dumps({"error": "pause_failed", "detail": str(exc)})
+    return json.dumps(result)
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 @write_operation(requires_approval=True)
 async def update_budget(
     channel: str,
@@ -99,12 +88,12 @@ async def update_budget(
     headers: dict[str, str] | None = None,
 ) -> str:
     """Update the daily budget of a live campaign. WRITE OPERATION — HITL gated."""
-    if new_budget_usd <= 0:
-        return json.dumps({"error": "budget must be positive"})
-    return json.dumps({
-        "channel": channel,
-        "external_campaign_id": external_campaign_id,
-        "daily_budget_usd": new_budget_usd,
-        "status": "updated",
-        "updated_with_approval": True,
-    })
+    try:
+        result = await writes.update_budget(
+            channel=channel,
+            external_campaign_id=external_campaign_id,
+            new_budget_usd=new_budget_usd,
+        )
+    except writes.WriteGatewayError as exc:
+        return json.dumps({"error": "budget_update_failed", "detail": str(exc)})
+    return json.dumps(result)
