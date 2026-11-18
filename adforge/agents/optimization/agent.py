@@ -6,12 +6,15 @@ from typing import Any
 
 from adforge.agents.base import BaseAgent
 from adforge.agents.optimization.persona import PERSONA
+from adforge.agents.parsing import extract_json, schema_instruction, validate_payload
 from adforge.guardrails.contracts import AgentInput, OptimizationSuggestion
+from adforge.guardrails.exceptions import ContractValidationError
 
 
 class OptimizationAgent(BaseAgent):
     name = "optimization"
     persona = PERSONA
+    mcp_servers = ("analytics", "roi")
 
     def build_messages(self, agent_input: AgentInput) -> list[dict[str, str]]:
         kpis = json.dumps(agent_input.upstream_payloads.get("kpi_analytics", {}), indent=2, default=str)
@@ -28,27 +31,32 @@ class OptimizationAgent(BaseAgent):
                     f"ROI report:\n{roi}\n\n"
                     "Produce a JSON object: {\"suggestions\": [OptimizationSuggestion, ...]}. "
                     "Max 3 suggestions. Sum of delta_pct * budget should approximate zero."
+                    f"{schema_instruction(OptimizationSuggestion, array_key='suggestions')}"
                 ),
             },
         ]
 
     def parse_response(self, content: str, agent_input: AgentInput) -> dict[str, Any]:
-        body = content.strip()
-        if body.startswith("```"):
-            body = body.split("\n", 1)[1]
-            if body.endswith("```"):
-                body = body.rsplit("```", 1)[0]
-        try:
-            data = json.loads(body)
-        except json.JSONDecodeError as e:
-            data = {"suggestions": [], "_parse_error": str(e)}
+        data = extract_json(content)
+        raw_suggestions = data.get("suggestions", [])
+        if not isinstance(raw_suggestions, list):
+            raise ContractValidationError(
+                agent_name=self.name,
+                errors=[{"loc": ["suggestions"], "msg": "must be a list"}],
+            )
 
         suggestions = []
-        for s in data.get("suggestions", [])[:3]:
+        for s in raw_suggestions[:3]:
             try:
-                suggestions.append(OptimizationSuggestion(**s).model_dump())
-            except Exception:
-                # Skip malformed suggestions rather than failing the whole run.
+                suggestions.append(validate_payload(OptimizationSuggestion, s, self.name))
+            except ContractValidationError:
+                # Skip one malformed suggestion rather than failing the run.
                 continue
+
+        if raw_suggestions and not suggestions:
+            raise ContractValidationError(
+                agent_name=self.name,
+                errors=[{"loc": ["suggestions"], "msg": "no valid suggestion objects"}],
+            )
 
         return {"suggestions": suggestions}

@@ -1,20 +1,25 @@
 """Graph state + node wiring."""
 from __future__ import annotations
 
-from typing import Any, TypedDict
+import asyncio
+import logging
+from operator import add
+from typing import Annotated, Any, TypedDict
 from uuid import UUID, uuid4
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import interrupt, Command
+from langgraph.types import interrupt
 
-from adforge.agents.research.agent import ResearchAgent
-from adforge.agents.creative_strategist.agent import CreativeStrategistAgent
-from adforge.agents.media_planner.agent import MediaPlannerAgent
-from adforge.agents.kpi_analytics.agent import KpiAnalyticsAgent
-from adforge.agents.roi_calculator.agent import RoiCalculatorAgent
 from adforge.agents.compliance.agent import ComplianceAgent
+from adforge.agents.creative_strategist.agent import CreativeStrategistAgent
+from adforge.agents.kpi_analytics.agent import KpiAnalyticsAgent
+from adforge.agents.media_planner.agent import MediaPlannerAgent
 from adforge.agents.optimization.agent import OptimizationAgent
+from adforge.agents.research.agent import ResearchAgent
+from adforge.agents.roi_calculator.agent import RoiCalculatorAgent
 from adforge.config import get_settings
+
+logger = logging.getLogger("adforge.graph")
 
 
 class CampaignState(TypedDict, total=False):
@@ -30,7 +35,7 @@ class CampaignState(TypedDict, total=False):
     compliance_verdict: dict[str, Any]
     # v0.2: HITL review state
     review_required: bool
-    review_status: str  # "pending" | "approved" | "rejected"
+    review_status: str  # "pending" | "approved" | "rejected" | "skipped" | "auto_blocked"
     reviewer_email: str | None
     reviewer_comments: str | None
     approval_token: str | None
@@ -38,7 +43,19 @@ class CampaignState(TypedDict, total=False):
     kpi_analytics: dict[str, Any]
     roi_calculator: dict[str, Any]
     optimization: dict[str, Any]
-    errors: list[str]
+    # ``add`` reducer: concurrent/sequential node updates append instead of
+    # overwriting one another.
+    errors: Annotated[list[str], add]
+
+
+def thread_id_for(campaign_id: str | UUID) -> str:
+    """Stable LangGraph checkpoint thread id for a campaign.
+
+    The run and the HITL resume endpoints must agree on this value, otherwise
+    ``Command(resume=...)`` has no checkpoint to resume from. Deriving it from
+    the campaign id (instead of a per-run request id) makes that guarantee.
+    """
+    return f"campaign:{campaign_id}"
 
 
 # Singleton agent instances (cheap to construct; reuse across runs)
@@ -51,74 +68,71 @@ _roi = RoiCalculatorAgent()
 _optimization = OptimizationAgent()
 
 
+def _agent_input(state: CampaignState, agent_name: str, upstream: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "request_id": state.get("request_id", str(uuid4())),
+        "tenant_id": state["tenant_id"],
+        "campaign_id": state["campaign_id"],
+        "agent_name": agent_name,
+        "brief": state.get("brief"),
+        "upstream_payloads": upstream,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Node functions — each wraps an agent's run() and updates state.
 # --------------------------------------------------------------------------- #
 
 
 async def research_node(state: CampaignState) -> dict[str, Any]:
-    result = await _research.run({
-        "request_id": state.get("request_id", str(uuid4())),
-        "tenant_id": state["tenant_id"],
-        "campaign_id": state["campaign_id"],
-        "agent_name": "research",
-        "brief": state.get("brief"),
-        "upstream_payloads": {},
-    })
-    return {"research": result.output.payload} if result.output.error is None else {
-        "research": {},
-        "errors": state.get("errors", []) + [f"research: {result.output.error}"],
-    }
+    result = await _research.run(_agent_input(state, "research", {}))
+    if result.output.error is None:
+        return {"research": result.output.payload}
+    return {"research": {}, "errors": [f"research: {result.output.error}"]}
 
 
 async def creative_node(state: CampaignState) -> dict[str, Any]:
-    result = await _creative.run({
-        "request_id": state["request_id"],
-        "tenant_id": state["tenant_id"],
-        "campaign_id": state["campaign_id"],
-        "agent_name": "creative_strategist",
-        "brief": state.get("brief"),
-        "upstream_payloads": {"research": state.get("research", {})},
-    })
-    return {"creative": result.output.payload} if result.output.error is None else {
-        "creative": {},
-        "errors": state.get("errors", []) + [f"creative: {result.output.error}"],
-    }
+    upstream = {"research": state.get("research", {})}
+    # Pass the reviewer's rejection comments into the revision round.
+    if state.get("reviewer_comments"):
+        upstream["reviewer_comments"] = state["reviewer_comments"]
+        upstream["revision_count"] = state.get("revision_count", 0)
+
+    result = await _creative.run(_agent_input(state, "creative_strategist", upstream))
+    if result.output.error is None:
+        return {"creative": result.output.payload}
+    return {"creative": {}, "errors": [f"creative: {result.output.error}"]}
 
 
 async def media_planner_node(state: CampaignState) -> dict[str, Any]:
-    result = await _media_planner.run({
-        "request_id": state["request_id"],
-        "tenant_id": state["tenant_id"],
-        "campaign_id": state["campaign_id"],
-        "agent_name": "media_planner",
-        "brief": state.get("brief"),
-        "upstream_payloads": {
+    result = await _media_planner.run(_agent_input(
+        state,
+        "media_planner",
+        {
             "research": state.get("research", {}),
             "creative": state.get("creative", {}),
         },
-    })
-    return {"media_plan": result.output.payload} if result.output.error is None else {
-        "media_plan": {},
-        "errors": state.get("errors", []) + [f"media_planner: {result.output.error}"],
-    }
+    ))
+    if result.output.error is None:
+        return {"media_plan": result.output.payload}
+    return {"media_plan": {}, "errors": [f"media_planner: {result.output.error}"]}
 
 
 async def compliance_node(state: CampaignState) -> dict[str, Any]:
-    result = await _compliance.run({
-        "request_id": state["request_id"],
-        "tenant_id": state["tenant_id"],
-        "campaign_id": state["campaign_id"],
-        "agent_name": "compliance",
-        "brief": state.get("brief"),
-        "upstream_payloads": {
+    result = await _compliance.run(_agent_input(
+        state,
+        "compliance",
+        {
             "creative": state.get("creative", {}),
             "media_plan": state.get("media_plan", {}),
         },
-    })
-    return {"compliance_verdict": result.output.payload} if result.output.error is None else {
+    ))
+    if result.output.error is None:
+        return {"compliance_verdict": result.output.payload}
+    # A failed compliance review must never be treated as approval.
+    return {
         "compliance_verdict": {"approved": False, "risk_level": "critical"},
-        "errors": state.get("errors", []) + [f"compliance: {result.output.error}"],
+        "errors": [f"compliance: {result.output.error}"],
     }
 
 
@@ -140,8 +154,8 @@ async def human_review_node(state: CampaignState) -> dict[str, Any]:
     creative → media_planner → compliance → human_review (max 3 revisions).
 
     On approve, an HMAC-signed approval token is generated and stored in
-    state. The orchestrator's publish step (not yet wired in v0.2) uses
-    this token to call the ads MCP's @write_operation tools.
+    state. The orchestrator's publish step uses this token to call the ads
+    MCP's @write_operation tools.
     """
     settings = get_settings()
     verdict = state.get("compliance_verdict", {})
@@ -175,11 +189,13 @@ async def human_review_node(state: CampaignState) -> dict[str, Any]:
     if reviewer_verdict.get("approved"):
         # Issue an HMAC-signed approval token valid for 1 hour.
         from adforge.mcp_servers.permissions import issue_approval_token
+
         token = issue_approval_token(
             campaign_id=state["campaign_id"],
             operation="publish_campaign",
-            reviewer_email=reviewer_verdict.get("reviewer_email", "unknown"),
+            reviewer_email=reviewer_verdict.get("reviewer_email") or "unknown",
             ttl_seconds=3600,
+            tenant_id=state["tenant_id"],
         )
         return {
             "review_status": "approved",
@@ -187,67 +203,53 @@ async def human_review_node(state: CampaignState) -> dict[str, Any]:
             "reviewer_comments": reviewer_verdict.get("comments"),
             "approval_token": token,
         }
-    else:
-        return {
-            "review_status": "rejected",
-            "reviewer_email": reviewer_verdict.get("reviewer_email"),
-            "reviewer_comments": reviewer_verdict.get("comments", "No comment provided."),
-            "revision_count": state.get("revision_count", 0) + 1,
-        }
+
+    return {
+        "review_status": "rejected",
+        "reviewer_email": reviewer_verdict.get("reviewer_email"),
+        "reviewer_comments": reviewer_verdict.get("comments") or "No comment provided.",
+        "revision_count": state.get("revision_count", 0) + 1,
+    }
 
 
 async def kpi_analytics_node(state: CampaignState) -> dict[str, Any]:
-    result = await _kpi.run({
-        "request_id": state["request_id"],
-        "tenant_id": state["tenant_id"],
-        "campaign_id": state["campaign_id"],
-        "agent_name": "kpi_analytics",
-        "brief": state.get("brief"),
-        "upstream_payloads": {
-            "media_plan": state.get("media_plan", {}),
-        },
-    })
-    return {"kpi_analytics": result.output.payload} if result.output.error is None else {
-        "kpi_analytics": {},
-        "errors": state.get("errors", []) + [f"kpi_analytics: {result.output.error}"],
-    }
+    result = await _kpi.run(_agent_input(
+        state,
+        "kpi_analytics",
+        {"media_plan": state.get("media_plan", {})},
+    ))
+    if result.output.error is None:
+        return {"kpi_analytics": result.output.payload}
+    return {"kpi_analytics": {}, "errors": [f"kpi_analytics: {result.output.error}"]}
 
 
 async def roi_calculator_node(state: CampaignState) -> dict[str, Any]:
-    result = await _roi.run({
-        "request_id": state["request_id"],
-        "tenant_id": state["tenant_id"],
-        "campaign_id": state["campaign_id"],
-        "agent_name": "roi_calculator",
-        "brief": state.get("brief"),
-        "upstream_payloads": {
+    result = await _roi.run(_agent_input(
+        state,
+        "roi_calculator",
+        {
             "kpi_analytics": state.get("kpi_analytics", {}),
             "media_plan": state.get("media_plan", {}),
         },
-    })
-    return {"roi_calculator": result.output.payload} if result.output.error is None else {
-        "roi_calculator": {},
-        "errors": state.get("errors", []) + [f"roi_calculator: {result.output.error}"],
-    }
+    ))
+    if result.output.error is None:
+        return {"roi_calculator": result.output.payload}
+    return {"roi_calculator": {}, "errors": [f"roi_calculator: {result.output.error}"]}
 
 
 async def optimization_node(state: CampaignState) -> dict[str, Any]:
-    result = await _optimization.run({
-        "request_id": state["request_id"],
-        "tenant_id": state["tenant_id"],
-        "campaign_id": state["campaign_id"],
-        "agent_name": "optimization",
-        "brief": state.get("brief"),
-        "upstream_payloads": {
+    result = await _optimization.run(_agent_input(
+        state,
+        "optimization",
+        {
             "kpi_analytics": state.get("kpi_analytics", {}),
             "roi_calculator": state.get("roi_calculator", {}),
             "media_plan": state.get("media_plan", {}),
         },
-    })
-    return {"optimization": result.output.payload} if result.output.error is None else {
-        "optimization": {},
-        "errors": state.get("errors", []) + [f"optimization: {result.output.error}"],
-    }
+    ))
+    if result.output.error is None:
+        return {"optimization": result.output.payload}
+    return {"optimization": {}, "errors": [f"optimization: {result.output.error}"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -262,14 +264,15 @@ def route_after_compliance(state: CampaignState) -> str:
 
 def route_after_review(state: CampaignState) -> str:
     """After the HITL review interrupt resumes:
-       - approved    → kpi_analytics
-       - rejected    → creative_strategist (revise, if revision_count < 3)
+
+       - approved     → kpi_analytics
+       - rejected     → creative_strategist (revise, if revision_count < 3)
        - rejected (max revisions hit) → END (campaign blocked)
-       - skipped     → kpi_analytics (dev mode)
+       - skipped      → kpi_analytics (dev mode)
        - auto_blocked → END (compliance critical risk)
     """
     status = state.get("review_status", "pending")
-    if status == "approved" or status == "skipped":
+    if status in ("approved", "skipped"):
         return "kpi_analytics"
     if status == "auto_blocked":
         return END
@@ -328,28 +331,136 @@ def build_graph():
 
 
 _compiled_graph = None
+_graph_lock: asyncio.Lock | None = None
 
 
-def get_compiled_graph():
-    """Return a compiled + checkpointer-wired graph (singleton)."""
+def _lock() -> asyncio.Lock:
+    global _graph_lock
+    if _graph_lock is None:
+        _graph_lock = asyncio.Lock()
+    return _graph_lock
+
+
+def _checkpointer_conninfo(database_url: str) -> str:
+    """Return a psycopg DSN for the configured database URL.
+
+    ``localhost`` can resolve to ``::1`` before ``127.0.0.1``. Local Docker
+    publishes Postgres on IPv4 loopback only, and psycopg tries resolved
+    addresses sequentially, so the IPv6 attempt can consume the entire connect
+    timeout. Rewrite the loopback name to avoid that stall; other hosts are
+    left untouched.
+    """
+    from sqlalchemy.engine import make_url
+
+    url = make_url(database_url)
+    if url.drivername.startswith("postgresql+"):
+        url = url.set(drivername="postgresql")
+    if (url.host or "").lower() == "localhost":
+        url = url.set(host="127.0.0.1")
+    return url.render_as_string(hide_password=False)
+
+
+async def _build_checkpointer():
+    """Construct the configured checkpointer.
+
+    Postgres gives durable HITL resumes across API workers/restarts. In
+    staging/prod a Postgres failure is fatal: silently falling back to an
+    in-process MemorySaver would lose the approval checkpoint and could let a
+    paused campaign resume against a different state. Dev/test may fall back
+    to MemorySaver for convenience.
+    """
+    from langgraph.checkpoint.memory import MemorySaver
+
+    settings = get_settings()
+    backend = settings.checkpointer_backend
+    strict = settings.app_env in ("staging", "prod")
+
+    if backend == "none":
+        if strict:
+            raise RuntimeError(
+                "CHECKPOINTER_BACKEND=none is unsafe in staging/prod: HITL "
+                "approval state would not be durable"
+            )
+        return None
+    if backend == "memory":
+        if strict:
+            raise RuntimeError(
+                "CHECKPOINTER_BACKEND=memory is unsafe in staging/prod: HITL "
+                "approval state would not survive a restart"
+            )
+        return MemorySaver()
+
+    try:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg_pool import AsyncConnectionPool
+
+        conninfo = _checkpointer_conninfo(settings.database_url)
+        pool = AsyncConnectionPool(
+            conninfo=conninfo,
+            min_size=1,
+            max_size=5,
+            open=False,
+            kwargs={"autocommit": True, "prepare_threshold": 0},
+        )
+        # ``setup()`` uses ``pool.connection()``, which raises PoolClosed when
+        # the pool was constructed with ``open=False`` and never opened.
+        await pool.open(wait=True, timeout=10)
+        try:
+            checkpointer = AsyncPostgresSaver(pool)
+            await checkpointer.setup()
+        except Exception:
+            await pool.close()
+            raise
+        logger.info("LangGraph checkpointer: Postgres")
+        return checkpointer
+    except Exception as exc:
+        if strict:
+            raise RuntimeError(
+                "Postgres checkpointer is required in staging/prod but could "
+                "not be initialised; refusing to start with non-durable HITL "
+                "state"
+            ) from exc
+        logger.warning(
+            "Postgres checkpointer unavailable — falling back to MemorySaver "
+            "(HITL resumes will not survive a restart)",
+            exc_info=True,
+        )
+        return MemorySaver()
+
+
+async def get_compiled_graph():
+    """Return a compiled + checkpointer-wired graph (async singleton)."""
     global _compiled_graph
     if _compiled_graph is not None:
         return _compiled_graph
 
-    builder = build_graph()
-    s = get_settings()
-
-    # Wire up Postgres checkpointer if we have a DB.
-    # In test mode without a DB, compile without checkpointing.
-    try:
-        pool = AsyncConnectionPool(
-            conninfo=s.database_url.replace("postgresql+asyncpg://", "postgresql://"),
-            min_size=1, max_size=5, open=False,
+    async with _lock():
+        if _compiled_graph is not None:
+            return _compiled_graph
+        builder = build_graph()
+        checkpointer = await _build_checkpointer()
+        _compiled_graph = (
+            builder.compile(checkpointer=checkpointer)
+            if checkpointer is not None
+            else builder.compile()
         )
-        checkpointer = AsyncPostgresSaver(pool)
-        # pool is opened lazily on first use — don't call .open() here
-        _compiled_graph = builder.compile(checkpointer=checkpointer)
-    except Exception:
-        # No DB available — fall back to in-memory graph (no resume capability)
-        _compiled_graph = builder.compile()
-    return _compiled_graph
+        return _compiled_graph
+
+
+async def clear_thread(campaign_id: str | UUID) -> None:
+    """Delete a campaign's checkpoint so a re-run starts from a clean state.
+
+    Without this, re-running an already-approved campaign would resume the
+    old checkpoint and could expose or reuse a stale ``approval_token``.
+    """
+    graph = await get_compiled_graph()
+    checkpointer = getattr(graph, "checkpointer", None)
+    deleter = getattr(checkpointer, "adelete_thread", None)
+    if deleter is not None:
+        await deleter(thread_id_for(campaign_id))
+
+
+def reset_compiled_graph() -> None:
+    """Drop the compiled graph singleton. Used by tests."""
+    global _compiled_graph
+    _compiled_graph = None

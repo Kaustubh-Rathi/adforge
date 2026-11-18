@@ -6,6 +6,7 @@ from typing import Any
 
 from adforge.agents.base import BaseAgent
 from adforge.agents.compliance.persona import PERSONA
+from adforge.agents.parsing import extract_json, schema_instruction, validate_payload
 from adforge.guardrails.contracts import AgentInput, ComplianceVerdict
 from adforge.guardrails.policy import PolicyEnforcer
 
@@ -13,6 +14,7 @@ from adforge.guardrails.policy import PolicyEnforcer
 class ComplianceAgent(BaseAgent):
     name = "compliance"
     persona = PERSONA
+    mcp_servers = ("compliance",)
 
     def __init__(self) -> None:
         super().__init__()
@@ -31,28 +33,18 @@ class ComplianceAgent(BaseAgent):
                     f"Media plan:\n{media_plan}\n\n"
                     "Produce a ComplianceVerdict JSON object. The PolicyEnforcer "
                     "has already run on prohibited terms; your job is to catch "
-                    "the nuanced issues (misleading framing, platform T&C edge cases)."
+                    "the nuanced issues (misleading framing, platform T&C edge cases). "
+                    "Use risk_level='critical' ONLY for a Tier-1 violation or "
+                    "sensitive-attribute targeting. Missing/incomplete plan data "
+                    "is a 'high' risk review issue, not 'critical'."
+                    f"{schema_instruction(ComplianceVerdict)}"
                 ),
             },
         ]
 
     def parse_response(self, content: str, agent_input: AgentInput) -> dict[str, Any]:
-        body = content.strip()
-        if body.startswith("```"):
-            body = body.split("\n", 1)[1]
-            if body.endswith("```"):
-                body = body.rsplit("```", 1)[0]
-        try:
-            data = json.loads(body)
-        except json.JSONDecodeError as e:
-            data = {
-                "approved": False,
-                "risk_level": "high",
-                "flagged_issues": [f"LLM output not parseable: {e}"],
-                "required_disclosures": [],
-                "reviewer_notes": "Failed to parse LLM verdict — defaulting to NOT approved.",
-                "blocked_terms": [],
-            }
+        data = extract_json(content)
+        llm_verdict = validate_payload(ComplianceVerdict, data, self.name)
 
         # Re-run the deterministic PolicyEnforcer as a hard gate.
         creative = agent_input.upstream_payloads.get("creative", {})
@@ -70,19 +62,23 @@ class ComplianceAgent(BaseAgent):
         # Merge: LLM verdict takes the lead, but if PolicyEnforcer hard-blocks,
         # we override to critical+not-approved.
         merged = ComplianceVerdict(
-            approved=data.get("approved", False) and deterministic_verdict.approved,
+            approved=llm_verdict["approved"] and deterministic_verdict.approved,
             risk_level=max(
-                data.get("risk_level", "medium"),
+                llm_verdict["risk_level"],
                 deterministic_verdict.risk_level,
                 key=["low", "medium", "high", "critical"].index,
             ),
             flagged_issues=list(set(
-                data.get("flagged_issues", []) + deterministic_verdict.flagged_issues
+                llm_verdict["flagged_issues"] + deterministic_verdict.flagged_issues
             )),
             required_disclosures=list(set(
-                data.get("required_disclosures", []) + deterministic_verdict.required_disclosures
+                llm_verdict["required_disclosures"] + deterministic_verdict.required_disclosures
             )),
-            reviewer_notes=data.get("reviewer_notes", "") + " | PolicyEnforcer: " + deterministic_verdict.reviewer_notes,
+            reviewer_notes=(
+                llm_verdict["reviewer_notes"]
+                + " | PolicyEnforcer: "
+                + deterministic_verdict.reviewer_notes
+            ),
             blocked_terms=deterministic_verdict.blocked_terms,
         )
         return merged.model_dump()

@@ -60,6 +60,24 @@ You produce a list of OptimizationSuggestion objects:
     -> rationale: "Channel absorbs 55% of spend but only 18% of conversions;
        misallocation; reallocate to top performer."
 
+## MOCK / PAUSED DATA
+
+  When the ROI report marks the data as mock (is_mock or data_status fields)
+  OR the recommendation is pause/kill, DO NOT return an empty suggestions
+  list. Instead return 1-2 what-if reallocation suggestions computed from
+  the channel differences you can observe in the breakdown (ROAS deltas and
+  CPA gaps between channels) — e.g. shift budget from the weakest-ROAS /
+  highest-CPA channel toward the strongest one.
+
+  - Prefix every such rationale with "[what-if on mock data]" and frame it
+    as provisional planning guidance for a relaunch, NOT a live budget move
+    (e.g. "[what-if on mock data] If these signals held on real traffic,
+    moving 20% of Meta budget to Google would...").
+  - Say plainly that the underlying numbers are mock/paused and the action
+    should only be executed after validating against real KPIs.
+  - Budget-balance math still applies: what-if deltas must approximately
+    net to zero across channels.
+
 ## BUDGET REALLOCATION MATH
 
   Sum of all (delta_pct * channel_budget) should approximate zero — i.e.

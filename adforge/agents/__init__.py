@@ -14,6 +14,6 @@ isolation, rate limiting, audit logging). Agents override ``build_messages``
 and ``parse_response`` — never the guardrail logic.
 """
 
-from adforge.agents.base import BaseAgent, AgentResult
+from adforge.agents.base import AgentResult, BaseAgent
 
 __all__ = ["BaseAgent", "AgentResult"]

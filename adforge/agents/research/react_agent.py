@@ -30,17 +30,30 @@ from adforge.guardrails.contracts import ResearchFindings
 from adforge.llm.factory import get_llm
 from adforge.mcp_servers.client import get_mcp_tools
 
+_research_tools_cache: list | None = None
 
-@lru_cache
+
 async def _load_research_tools() -> list:
-    """Load tools from the research + public_data MCP servers.
+    """Load read-only tools from the research + public_data MCP servers.
 
     Returns an empty list if MCP servers are unreachable — caller should
-    fall back to the single-shot ResearchAgent in that case.
+    fall back to the single-shot ResearchAgent in that case. The cache is a
+    resolved list (not a coroutine), so it is safe to await repeatedly.
     """
-    research_tools = await get_mcp_tools("research")
-    public_data_tools = await get_mcp_tools("public_data")
-    return list(research_tools) + list(public_data_tools)
+    global _research_tools_cache
+    if _research_tools_cache is None:
+        research_tools = await get_mcp_tools("research")
+        public_data_tools = await get_mcp_tools("public_data")
+        _research_tools_cache = list(research_tools) + list(public_data_tools)
+    return list(_research_tools_cache)
+
+
+def _clear_research_tools_cache() -> None:
+    global _research_tools_cache
+    _research_tools_cache = None
+
+
+_load_research_tools.cache_clear = _clear_research_tools_cache  # type: ignore[attr-defined]
 
 
 @lru_cache
@@ -51,8 +64,6 @@ def _build_react_agent():
     """
     # Lazy imports so users who never use the ReAct path don't pay the install cost.
     from langchain.agents import create_agent
-    from langgraph.prebuilt import ToolNode, tools_condition
-    from langgraph.graph import StateGraph, START, END, MessagesState
 
     llm = get_llm()
 
@@ -60,8 +71,6 @@ def _build_react_agent():
     # structure this as a factory that returns a coroutine-returning builder.
     # The actual tool loading happens in ``run_react_research`` below.
     async def _build(tools: list) -> Any:
-        model = llm  # ZaiGLMProvider implements chat() — bind_tools is via langchain wrapper
-
         # The langchain[mcp] adapter returns langchain_core.tools.Tool objects.
         # We need an LLM that can bind_tools — wrap our LLMProvider in a
         # minimal LangChain-compatible chat model.
@@ -78,24 +87,35 @@ def _build_react_agent():
     return _build
 
 
-async def run_react_research(query: str, max_iterations: int = 8) -> dict[str, Any]:
+async def run_react_research(
+    query: str,
+    *,
+    tenant_id: str,
+    campaign_id: str,
+    max_iterations: int = 8,
+) -> dict[str, Any]:
     """Run the ReAct research agent with a user query.
 
     Returns a ResearchFindings dict (validated against the schema).
 
-    Falls back to single-shot if MCP tools aren't available.
+    Falls back to single-shot if MCP tools aren't available. Tenant and
+    campaign ids are required so every tool call is attributable to a real
+    scope; there is no synthetic tenant fallback.
     """
+    if not tenant_id or not campaign_id:
+        raise ValueError("tenant_id and campaign_id are required")
+
     tools = await _load_research_tools()
     if not tools:
         # Fallback: no MCP tools available, single-shot LLM call.
-        from adforge.agents.research.agent import ResearchAgent
         from uuid import uuid4
+
+        from adforge.agents.research.agent import ResearchAgent
         agent = ResearchAgent()
-        # Synthesize a minimal AgentInput
         result = await agent.run({
             "request_id": str(uuid4()),
-            "tenant_id": "react_tenant",
-            "campaign_id": str(uuid4()),
+            "tenant_id": tenant_id,
+            "campaign_id": campaign_id,
             "agent_name": "research",
             "brief": None,
             "upstream_payloads": {},
@@ -110,7 +130,10 @@ async def run_react_research(query: str, max_iterations: int = 8) -> dict[str, A
         {"role": "system", "content": PERSONA},
         {"role": "user", "content": query + "\n\nProduce a ResearchFindings JSON object as your final answer."},
     ]
-    final_state = await agent.ainvoke({"messages": initial_messages})
+    final_state = await agent.ainvoke(
+        {"messages": initial_messages},
+        config={"recursion_limit": max_iterations},
+    )
 
     # Extract the final assistant message — the LLM's ResearchFindings JSON
     last_msg = final_state["messages"][-1]

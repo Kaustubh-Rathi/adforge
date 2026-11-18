@@ -25,7 +25,7 @@ async def call_research_tool(
         "llm", tenant_id=scope.tenant_id, campaign_id=str(scope.campaign_id)
     )
     tools = await get_mcp_tools("research")
-    headers = scope.asheaders()
+    headers = scope.as_headers()
 
     # The langchain[mcp] adapter exposes tools as LangChain Tool objects;
     # each has an async ainvoke method that accepts a kwargs dict.

@@ -1,33 +1,40 @@
-"""Agent eval runner — invokes each agent with a fixed test input and
-checks the output conforms to the expected schema.
+"""Agent eval runner — exercises every agent (and the full graph) against a
+fixed brief, then guards the numbers.
 
-Used by CI to catch regressions. Two modes:
-    --mock   (default in CI when no ZAI_API_KEY) — uses a deterministic mock
-             LLM that returns canned JSON. Verifies schema plumbing only.
-    (no flag) — calls the real LLM via the configured provider.
+Three kinds of checks:
+
+1. Schema: every agent output is validated against its Pydantic contract.
+2. Metric recomputation: KPI ratios and ROI totals are recomputed from the raw
+   counts and compared to what the agent reported. This catches fabricated or
+   drifted numbers that still satisfy the schema.
+3. End-to-end: the LangGraph topology runs research → … → optimization.
+
+The runner always uses the configured live LLM and real ad-platform reporting
+APIs. There is no simulated-data mode: missing credentials surface as eval
+failures so an operator knows exactly what is unconfigured.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import sys
+from typing import Any
 from uuid import uuid4
 
-from adforge.agents.research.agent import ResearchAgent
-from adforge.agents.creative_strategist.agent import CreativeStrategistAgent
-from adforge.agents.media_planner.agent import MediaPlannerAgent
 from adforge.agents.compliance.agent import ComplianceAgent
+from adforge.agents.creative_strategist.agent import CreativeStrategistAgent
+from adforge.agents.kpi_analytics.agent import KpiAnalyticsAgent
+from adforge.agents.media_planner.agent import MediaPlannerAgent
+from adforge.agents.research.agent import ResearchAgent
 from adforge.agents.roi_calculator.agent import RoiCalculatorAgent
-from adforge.agents.optimization.agent import OptimizationAgent
-from adforge.guardrails.contracts import CampaignBrief
-
+from adforge.guardrails.contracts import CampaignBrief, KpiSnapshot, RoiReport
+from adforge.llm.base import LLMProvider
 
 SAMPLE_BRIEF = {
     "product_name": "Acme CRM",
     "product_description": "Lightweight CRM for B2B sales teams. Tight Slack integration, AI-drafted follow-ups.",
     "target_audience": "Sales managers at 20-200 person B2B SaaS companies in the US.",
-    "budget_usd": 12000.0,
+    "budget_usd": 25000.0,
     "duration_days": 21,
     "business_objective": "conversion",
     "channels_hint": ["google", "linkedin"],
@@ -35,141 +42,210 @@ SAMPLE_BRIEF = {
 }
 
 
-async def _mock_chat(messages, **kwargs):
-    """Deterministic mock LLM for CI runs without an API key."""
-    from adforge.llm.base import LLMResponse, LLMUsage
-    user_msg = messages[-1]["content"] if messages else ""
-
-    if "ResearchFindings" in user_msg:
-        content = json.dumps({
-            "market_summary": "B2B CRM market is $80B, growing 12% YoY. Remote-work adoption accelerates demand.",
-            "top_keywords": ["best crm for b2b", "salesforce alternative", "lightweight crm"],
-            "competitor_creatives": [{"brand": "Pipedrive", "headline": "Sales tool your team will love"}],
-            "audience_persona": {"title": "Sales Manager", "pain_points": ["Too many tools", "Slow follow-ups"]},
-            "trends": [{"name": "AI-assisted outreach", "momentum": "high"}],
-            "sources": ["https://example.com/crm-market-2026"],
-        })
-    elif "CreativeConcept" in user_msg:
-        content = json.dumps({
-            "headline": "Stop losing deals to slow follow-ups",
-            "primary_text": "Acme CRM drafts your follow-ups automatically. Slack-native, set up in 5 minutes.",
-            "cta": "Start free",
-            "visual_direction": "Split-screen: messy inbox on left, clean Acme dashboard on right. Bright accent color.",
-            "ab_variants": [{"headline": "Never miss a follow-up again"}],
-            "channel_adaptations": {"google": {"headline": "Acme CRM — Slack-native B2B CRM"}},
-        })
-    elif "MediaPlan" in user_msg:
-        content = json.dumps({
-            "channel_allocations": [
-                {"channel": "google", "budget_usd": 8000.0, "expected_cpc": 3.5, "expected_cvr": 0.04},
-                {"channel": "linkedin", "budget_usd": 4000.0, "expected_cpc": 8.0, "expected_cvr": 0.06},
-            ],
-            "total_budget_usd": 12000.0,
-            "bidding_strategy": "max_conversions",
-            "audience_targeting": {"age": "28-45", "industries": ["SaaS"]},
-            "expected_reach": 60000,
-            "expected_impressions": 250000,
-            "flight_dates": {"start": "2026-02-01", "end": "2026-02-22"},
-        })
-    elif "ComplianceVerdict" in user_msg:
-        content = json.dumps({
-            "approved": True,
-            "risk_level": "low",
-            "flagged_issues": [],
-            "required_disclosures": [],
-            "reviewer_notes": "Creative is clean. No prohibited terms. Audience targeting OK.",
-            "blocked_terms": [],
-        })
-    elif "RoiReport" in user_msg:
-        content = json.dumps({
-            "total_spend_usd": 4500, "total_revenue_usd": 13500,
-            "total_conversions": 38, "blended_roas": 3.0, "blended_cpa": 118.4,
-            "payback_period_days": 45, "lifetime_value_usd": 600,
-            "net_profit_usd": 9000, "recommendation": "optimize",
-            "rationale": "Google drove 85% of conversions at ROAS 4.1; LinkedIn underperformed at 1.2x.",
-            "per_channel_breakdown": [{"channel": "google", "roas": 4.1}],
-        })
-    elif "OptimizationSuggestion" in user_msg:
-        content = json.dumps({"suggestions": [
-            {"channel": "google", "action": "increase_budget", "delta_pct": 0.30,
-             "rationale": "ROAS 4.1x, CPA below target. Scale winner.",
-             "expected_impact": {"cpa": "-8%", "roas": "+15%"}},
-            {"channel": "linkedin", "action": "decrease_budget", "delta_pct": -0.50,
-             "rationale": "ROAS 1.2x, CPA 3x target. Cut losses.",
-             "expected_impact": {"cpa": "+20%", "spend": "-50%"}},
-        ]})
-    else:
-        content = "{}"
-
-    return LLMResponse(content=content, usage=LLMUsage(prompt_tokens=100, completion_tokens=200, total_tokens=300))
+# --------------------------------------------------------------------------- #
+# Metric guards
+# --------------------------------------------------------------------------- #
 
 
-async def run_eval(mock: bool = False) -> int:
-    """Run all agents on the sample brief. Returns 0 on success, 1 on any failure."""
-    print(f"Running agent eval (mock={mock})...\n")
+def _close(actual: float, expected: float, tolerance: float = 0.02) -> bool:
+    return abs(actual - expected) <= tolerance * max(abs(expected), 1.0)
 
-    if mock:
-        # Patch the LLM factory to return a mock.
-        from adforge.llm.factory import get_llm
-        get_llm.cache_clear()
-        # Replace the cached singleton with a stub that returns _mock_chat
-        from adforge.llm.base import LLMProvider
 
-        class _MockProvider(LLMProvider):
-            async def chat(self, messages, **kw):
-                return await _mock_chat(messages, **kw)
+def check_kpi_metrics(snapshots: list[dict[str, Any]]) -> list[str]:
+    """Recompute KPI ratios from raw counts; flag mismatches."""
+    failures: list[str] = []
+    for row in snapshots:
+        # KpiSnapshot itself forbids negative money, so flag it before schema
+        # validation would raise instead of producing an eval failure.
+        if row.get("spend_usd", 0) < 0 or row.get("revenue_usd", 0) < 0:
+            failures.append(f"{row.get('channel', '?')}: negative money value")
+            continue
+        snap = KpiSnapshot(**row)
+        expected_ctr = snap.clicks / snap.impressions if snap.impressions else 0.0
+        expected_cvr = snap.conversions / snap.clicks if snap.clicks else 0.0
+        expected_roas = snap.revenue_usd / snap.spend_usd if snap.spend_usd else 0.0
+        if not _close(snap.ctr, expected_ctr, 0.01):
+            failures.append(f"{snap.channel}: ctr {snap.ctr} != {expected_ctr:.4f}")
+        if not _close(snap.cvr, expected_cvr, 0.01):
+            failures.append(f"{snap.channel}: cvr {snap.cvr} != {expected_cvr:.4f}")
+        if not _close(snap.roas, expected_roas, 0.01):
+            failures.append(f"{snap.channel}: roas {snap.roas} != {expected_roas:.2f}")
+        if snap.spend_usd < 0 or snap.revenue_usd < 0:
+            failures.append(f"{snap.channel}: negative money value")
+    return failures
 
-        import adforge.llm.factory as factory
-        factory.get_llm = lambda: _MockProvider()  # type: ignore[assignment]
+
+def check_roi_metrics(report: dict[str, Any]) -> list[str]:
+    """Recompute ROI totals/ratios from the raw spend + revenue."""
+    roi = RoiReport(**report)
+    failures: list[str] = []
+    expected_roas = (
+        roi.total_revenue_usd / roi.total_spend_usd if roi.total_spend_usd else 0.0
+    )
+    expected_cpa = (
+        roi.total_spend_usd / roi.total_conversions if roi.total_conversions else 0.0
+    )
+    expected_profit = roi.total_revenue_usd - roi.total_spend_usd
+    if not _close(roi.blended_roas, expected_roas, 0.02):
+        failures.append(f"blended_roas {roi.blended_roas} != {expected_roas:.2f}")
+    if not _close(roi.blended_cpa, expected_cpa, 0.02):
+        failures.append(f"blended_cpa {roi.blended_cpa} != {expected_cpa:.2f}")
+    if not _close(roi.net_profit_usd, expected_profit, 0.01):
+        failures.append(f"net_profit {roi.net_profit_usd} != {expected_profit:.2f}")
+    return failures
+
+
+# --------------------------------------------------------------------------- #
+# Eval execution
+# --------------------------------------------------------------------------- #
+
+
+async def run_eval(
+    provider: LLMProvider | None = None,
+    *,
+    include_graph: bool = True,
+) -> int:
+    """Run all agents on the sample brief. Returns 0 on success, 1 on failure."""
+    print(
+        "Running agent eval "
+        f"(provider={'injected' if provider is not None else 'configured'})\n"
+    )
 
     brief = CampaignBrief(**SAMPLE_BRIEF)
     campaign_id = uuid4()
     failures: list[str] = []
 
-    agents_to_test = [
-        ("research", ResearchAgent(), {}),
-        ("creative_strategist", CreativeStrategistAgent(), {"research": {}}),
-        ("media_planner", MediaPlannerAgent(), {"research": {}, "creative": {}}),
-        ("compliance", ComplianceAgent(), {"creative": {}, "media_plan": {}}),
-        ("roi_calculator", RoiCalculatorAgent(), {"kpi_analytics": {}, "media_plan": {}}),
-        ("optimization", OptimizationAgent(), {"kpi_analytics": {}, "roi_calculator": {}}),
-    ]
+    research = ResearchAgent(llm=provider)
+    creative = CreativeStrategistAgent(llm=provider)
+    media_planner = MediaPlannerAgent(llm=provider)
+    compliance = ComplianceAgent()
+    compliance._llm = provider
+    kpi = KpiAnalyticsAgent()
+    roi = RoiCalculatorAgent(llm=provider)
 
-    for name, agent, upstream in agents_to_test:
-        print(f"  → {name}...", end=" ")
-        try:
-            result = await agent.run({
+    async def run_agent(name, agent, upstream):
+        print(f"  -> {name}...", end=" ")
+        result = await agent.run({
+            "request_id": str(uuid4()),
+            "tenant_id": "eval_tenant",
+            "campaign_id": str(campaign_id),
+            "agent_name": name,
+            "brief": brief.model_dump(),
+            "upstream_payloads": upstream,
+        })
+        if result.output.error:
+            print(f"FAIL: {result.output.error}")
+            failures.append(f"{name}: {result.output.error}")
+            return {}
+        print(f"OK ({len(result.output.payload)} payload keys)")
+        return result.output.payload
+
+    research_payload = await run_agent("research", research, {})
+    creative_payload = await run_agent("creative_strategist", creative, {
+        "research": research_payload,
+    })
+    media_payload = await run_agent("media_planner", media_planner, {
+        "research": research_payload,
+        "creative": creative_payload,
+    })
+    compliance_payload = await run_agent("compliance", compliance, {
+        "creative": creative_payload,
+        "media_plan": media_payload,
+    })
+    kpi_payload = await run_agent("kpi_analytics", kpi, {
+        "media_plan": media_payload,
+    })
+    roi_payload = await run_agent("roi_calculator", roi, {
+        "kpi_analytics": kpi_payload,
+        "media_plan": media_payload,
+    })
+
+    # Guard the numbers the agents reported.
+    for failure in check_kpi_metrics(kpi_payload.get("snapshots", [])):
+        failures.append(f"kpi_metrics: {failure}")
+    # A failed ROI agent already contributed a failure above; don't crash the
+    # eval trying to validate an empty payload.
+    if roi_payload:
+        for failure in check_roi_metrics(roi_payload):
+            failures.append(f"roi_metrics: {failure}")
+    if not compliance_payload:
+        failures.append("compliance: empty verdict")
+    if not kpi_payload.get("snapshots"):
+        failures.append("kpi_analytics: no snapshots returned")
+
+    if include_graph:
+        print("  -> graph...", end=" ")
+        graph_failures = await _run_graph_eval(provider)
+        if graph_failures:
+            print(f"FAIL: {graph_failures}")
+            failures.extend(f"graph: {item}" for item in graph_failures)
+        else:
+            print("OK")
+
+    print(f"\n{'=' * 40}")
+    if failures:
+        print(f"Eval FAILED - {len(failures)} check(s) failed:")
+        for failure in failures:
+            print(f"  - {failure}")
+        return 1
+    print("Eval PASSED - all agents produced valid, self-consistent output.")
+    return 0
+
+
+async def _run_graph_eval(provider: LLMProvider | None) -> list[str]:
+    """Run the graph end-to-end without HITL pausing (eval mode only)."""
+    import adforge.graph.state as graph_state
+    from adforge.config import get_settings
+
+    settings = get_settings()
+    previous = settings.guardrails_require_compliance_approval
+    try:
+        # The eval exercises topology, not the review queue.
+        settings.guardrails_require_compliance_approval = False
+        for agent in (
+            graph_state._research,
+            graph_state._creative,
+            graph_state._media_planner,
+            graph_state._compliance,
+            graph_state._roi,
+            graph_state._optimization,
+        ):
+            if provider is not None:
+                agent._llm = provider
+
+        from langgraph.checkpoint.memory import MemorySaver
+
+        campaign_id = uuid4()
+        compiled = graph_state.build_graph().compile(checkpointer=MemorySaver())
+        config = {"configurable": {"thread_id": graph_state.thread_id_for(campaign_id)}}
+        final = await compiled.ainvoke(
+            {
                 "request_id": str(uuid4()),
                 "tenant_id": "eval_tenant",
                 "campaign_id": str(campaign_id),
-                "agent_name": name,
-                "brief": brief.model_dump(),
-                "upstream_payloads": upstream,
-            })
-            if result.output.error:
-                print(f"FAIL: {result.output.error}")
-                failures.append(f"{name}: {result.output.error}")
-            else:
-                print(f"OK (payload keys: {list(result.output.payload.keys())})")
-        except Exception as e:
-            print(f"FAIL: {type(e).__name__}: {e}")
-            failures.append(f"{name}: {type(e).__name__}: {e}")
+                "brief": CampaignBrief(**SAMPLE_BRIEF).model_dump(),
+                "errors": [],
+            },
+            config=config,
+        )
+    except Exception as e:  # noqa: BLE001 — eval reports, doesn't crash
+        return [f"{type(e).__name__}: {e}"]
+    finally:
+        settings.guardrails_require_compliance_approval = previous
 
-    print(f"\n{'='*40}")
-    if failures:
-        print(f"Eval FAILED — {len(failures)} agent(s) failed:")
-        for f in failures:
-            print(f"  - {f}")
-        return 1
-    print("Eval PASSED — all agents produced valid output.")
-    return 0
+    problems: list[str] = []
+    if final.get("errors"):
+        problems.extend(final["errors"])
+    if not final.get("optimization"):
+        problems.append("optimization payload missing")
+    return problems
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mock", action="store_true", help="Use mock LLM (no API key needed)")
+    parser.add_argument("--skip-graph", action="store_true", help="Skip the graph eval")
     args = parser.parse_args()
-    sys.exit(asyncio.run(run_eval(mock=args.mock)))
+    sys.exit(asyncio.run(run_eval(include_graph=not args.skip_graph)))
 
 
 if __name__ == "__main__":
