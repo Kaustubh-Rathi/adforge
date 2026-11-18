@@ -86,8 +86,9 @@ orchestrator. See `docs/RESEARCH.md` for the open-source repos.
 | `ipinfo` | `NimbleBrainInc/mcp-ipinfo` | IP geolocation, ASN, ISP, abuse flag | Free tier (50k/month) |
 | `abuseipdb` | community MCP | IP reputation, abuse reports, CIDR analysis | Free tier (1k/day) |
 
-Plus `linkedin-api` (community Python lib, already in pyproject) and the
-existing `tavily-python`.
+Plus the official LinkedIn Marketing API (`/rest/adAnalytics`, raw HTTP) and
+the existing `tavily-python`. The unofficial `linkedin-api` package was removed:
+it relies on undocumented endpoints and cannot be a production dependency.
 
 These give the Research agent **real public data** for:
 - "How much traffic does competitor X get?" → SimilarWeb
@@ -96,7 +97,9 @@ These give the Research agent **real public data** for:
 
 The ad-platform APIs (Google Ads, Meta, LinkedIn Marketing, TikTok) still
 require paid credentials — those are NOT public. When credentials aren't
-available, AdForge uses mock mode so the graph still runs end-to-end.
+available, the affected tool returns an explicit configuration error. AdForge
+never fabricates ad performance, and a graph run records the failure instead
+of pretending the channel succeeded.
 
 ---
 
@@ -110,10 +113,10 @@ available, AdForge uses mock mode so the graph still runs end-to-end.
 | `langchain-ai/langgraph` + `langgraph-checkpoint-postgres` + `langgraph-checkpoint-redis` | Graph orchestration + state persistence |
 | `googleads/google-ads-mcp` | Official Google Ads read-only MCP (runs as its own docker service on :9006) |
 | `modelcontextprotocol/python-sdk` (`mcp[cli]`) | Official MCP Python SDK — every local server uses `FastMCP` |
-| `zai-sdk`, `openai`, `anthropic` | LLM provider SDKs |
-| `googleads/google-ads-python` | Direct SDK for write wrapper (official MCP is read-only) |
-| `facebookbusiness/facebook-python-business-sdk` | Meta Marketing API (used by self-host wrapper) |
-| `orrivlin/linkedin-api` | Community LinkedIn lib — wrapped as our own MCP (no official LinkedIn MCP exists) |
+| `openai`, `anthropic` | LLM provider SDKs (default is the opencode.ai OpenAI-compatible endpoint) |
+| `googleads/google-ads-python` | Optional ad-platform SDK extra; runtime KPI fetchers call public HTTP APIs directly |
+| `facebookbusiness/facebook-python-business-sdk` | Optional self-hosted Meta SDK extra; not used by the default webhook publishing path |
+| LinkedIn Marketing API | Official `/rest/adAnalytics` endpoint — wrapped as our own MCP (no official LinkedIn MCP exists) |
 | `tavily-python` | Web search |
 
 ### v0.2 newly integrated
@@ -129,7 +132,7 @@ available, AdForge uses mock mode so the graph still runs end-to-end.
 
 | Repo | Why not wired |
 |------|--------------|
-| `pipeboard-co/meta-ads-mcp` family | Requires Pipeboard OAuth — code defaults to mock mode |
+| `pipeboard-co/meta-ads-mcp` family | Requires Pipeboard OAuth — the remote MCP is registered only when `PIPEBOARD_API_TOKEN` is set; otherwise those tools are unavailable |
 | `aws-samples/langgraph-multi-agent` | Architectural reference only — patterns adopted, no code copied |
 | `clientskatbi/google-ads-campaign-mcp` | Pattern reference for write-side MCP — we wrote our own thin wrapper |
 
@@ -152,7 +155,7 @@ available, AdForge uses mock mode so the graph still runs end-to-end.
 | Research | Good role definition; lists tools | No instruction on how to iterate (search → scrape → cluster → search again). No instruction on what makes a "good" keyword (search volume, intent, CPC, competition). |
 | Creative Strategist | Channel adaptation rules are concrete | No reference to emotional angles (loss aversion, social proof, scarcity). No examples of good vs bad headlines. |
 | Media Planner | Decision rules are OK | Missing CPC benchmarks (LinkedIn $8-15, Google $2-5, Meta $1-3, TikTok $0.5-2). Missing guidance on attribution windows. |
-| KPI Analytics | Lists formulas | Doesn't actually compute them in the LLM — mock fetcher does. Should at least cross-check the fetched numbers. |
+| KPI Analytics | Lists formulas | The node is deterministic and computes metrics from real platform reporting rows; the LLM does not recompute them. Cross-checking fetched numbers remains a roadmap item. |
 | ROI Calculator | Decision matrix is correct | No industry-specific benchmarks. E-commerce ROAS of 3-4x is healthy; SaaS can be 1-2x because LTV is multi-year; B2B lead-gen CPA targets differ wildly. |
 | Compliance | Mentions platform policies | Doesn't cite specific T&C sections (Meta's Personal Attributes policy, Google's Misleading Claims, etc.). |
 | Optimization | Heuristics are reasonable | Doesn't account for statistical significance (don't pause a channel after 1 day of bad data — need 100+ conversions for confidence). |
@@ -349,9 +352,11 @@ creative preview + media plan + compliance verdict + approve/reject buttons.
 
 ## Remaining known gaps (v0.3 roadmap)
 
-1. **Live ad-platform writes still mock.** The `publish_campaign` MCP returns
-   a fake external ID. Real wiring needs the Google Ads / Meta Marketing API
-   SDK calls — gated behind HITL approval.
+1. **Live ad-platform writes use an adapter webhook.** The `publish_campaign`
+   MCP calls an explicitly configured, authenticated publishing webhook after
+   a single-use HITL token is consumed. Native Google Ads / Meta Marketing API
+   write clients are not bundled yet; without the webhook, publishing fails
+   explicitly and nothing is launched.
 2. **LangSmith trace UI** not wired in v0.2 (env vars present, dashboard
    uses our own DB-backed view).
 3. **Multi-tenant auth** is still the static `X-AdForge-Tenant` header.
@@ -366,3 +371,45 @@ creative preview + media plan + compliance verdict + approve/reject buttons.
 
 This audit is committed with v0.2 so future contributors can see exactly
 what was reviewed and what remains.
+
+---
+
+## v0.2.1 remediation and verification (2026-11-03)
+
+A full defect-remediation pass followed this audit. The changes below are the
+ones that most directly affect the concerns raised above.
+
+| Area | Change |
+|------|--------|
+| LLM endpoint | Default provider is now `opencode` (`https://opencode.ai/inference/openai/v1`, `deepseek-v4.1-flash-free`). The client mirrors the reference behavior: Bun TLS fingerprint via `curl_cffi`, `<env>` system block, `ses_...` session headers, `read` tool gate, SSE streaming, and `stream_options.include_usage`. |
+| Structured output | `adforge.agents.parsing.schema_instruction()` embeds the real Pydantic JSON Schema in every LLM agent prompt (research, creative, media planner, compliance, ROI, optimization). List outputs declare the wrapper shape. This substantially improves first-pass validation with small/free models and leaves the repair round for genuine mistakes. |
+| Compliance targeting | `PolicyEnforcer._collect_targeting_terms()` now inspects only positive audience-targeting values. Exclusion/negative/`do_not_*` subtrees and descriptive fields (notes, policies, checks, summaries) are skipped, and the enforcer no longer stringifies the whole plan (which turned harmless notes into false `TARGETING_*` hard blocks). Regression tests cover exclusion lists, nested exclusions, `sensitive_attribute_check` self-assessments from a real live run, and real positive targeting. |
+| Graph / API | HITL resume status derivation, failed-agent routing, trace queries, and tenant-scoped review updates are covered by unit + integration tests. |
+| Storage / KPI | Engine init is idempotent, seeded KPI rows carry `source` + `platform_date`, analytics MCP coerces dates and returns JSON-safe rows, Redis failures fail open in test/dev. |
+| Test tiers | The unit tier enforces a 90% coverage gate; the 90% gate for the full non-live suite covers unit + integration. Integration uses `embedded-postgres` 18 and `fakeredis`, so it does not require Docker. |
+
+Verification on Windows, Python 3.14.6, project venv (2026-11-05):
+
+| Check | Result |
+|-------|--------|
+| Unit tier (`not integration and not live`) | **584 passed**, **91.95%** coverage |
+| Integration tier (`integration and not live`) | **42 passed** (behavioural subset; coverage is not meaningful in isolation) |
+| Full non-live suite (`not live`) | **626 passed**, **95.32%** combined coverage |
+| Docker runtime | Docker Desktop 4.98.0 + WSL2; engine 29.9.2, Compose v5.6.1; Postgres 16.15 and Redis 7 both healthy |
+| App ↔ Docker services | SQLAlchemy/asyncpg reads, writes, and rollback against Postgres; Redis set/get/delete round-trip |
+| Durable checkpointer | `AsyncPostgresSaver` selected against Docker Postgres; all four checkpoint tables created. A checkpoint written in one process was read back and deleted in a second process. The `localhost` → `127.0.0.1` normalisation avoids a psycopg IPv6-first stall (Docker publishes IPv4 loopback only). |
+| Local MCP startup (`tests/test_mcp_startup_integration.py`) | 7/7 servers, **32 tools** discovered over real stdio handshakes |
+| Live health (`ADFORGE_LIVE_TESTS=1`) | **1 passed, 4 skipped**; skipped channels have no ad-platform credentials |
+| Live end-to-end (`tests/test_live_e2e.py`) | Passed 2026-11-05 (~331s): real opencode LLM → embedded Postgres → HITL pause → approve → `approved`, no token exposure. The post-checkpointer-change rerun skipped cleanly after 270s when the free-tier quota was exhausted mid-run; no spend occurred. The HITL review lifecycle and durable checkpointer are re-verified by the integration suite and the cross-process checkpoint test. |
+
+Remaining environment limits (unchanged from the roadmap):
+
+1. Real Google / Meta / LinkedIn / TikTok data requires credentials; live KPI
+   tests skip without them. Offline request/response contracts are covered by
+   `respx` fixtures, but real-account verification still needs credentials.
+2. The unofficial `linkedin-api` package was removed (it cannot install on
+   Python 3.14 and uses undocumented endpoints). The custom LinkedIn MCP uses
+   the official `/rest/adAnalytics` endpoint over raw HTTP.
+3. The opencode free tier is rate limited (`429 FreeUsageLimitError`). The live
+   health test skips on quota exhaustion; the full live e2e consumes several
+   calls and should be run deliberately.

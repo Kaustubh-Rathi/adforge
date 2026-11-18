@@ -51,7 +51,7 @@ The dashboard answers the only question that matters: **was it worth it?**
    │        │
    │        ├─ googleads/google-ads-mcp (official, container :9006)
    │        ├─ Pipeboard remote MCP family (Meta + TikTok + Snap + Reddit)
-   │        └─ adforge/mcp_servers/ads/linkedin.py (custom — no official MCP)
+   │        └─ adforge/mcp_servers/ads/linkedin.py (standalone MCP, :9012)
    │
    └─ Tavily web search API
 ```
@@ -80,7 +80,7 @@ See **[docs/DESIGN.md](docs/DESIGN.md)** for the full system design with 13 merm
 
 - Python 3.11+
 - Docker + Docker Compose
-- **Zero paid API keys required** — AdForge runs end-to-end with DuckDuckGo + Wikipedia + HN + Reddit + StackExchange + AppStore + IPInfo (all free, no auth). Set `ZAI_API_KEY` for LLM calls, or accept mock-mode for the LLM too.
+- **Zero paid API keys required for the default path** — AdForge runs end-to-end with DuckDuckGo + Wikipedia + HN + Reddit + StackExchange + AppStore + IPInfo + Google Trends + SEC EDGAR + Jina Reader (all free, no auth) and the Coarena free model API (OpenAI-compatible, `$5/day`). Missing ad-platform credentials produce explicit configuration errors; they never fabricate data.
 
 ### 1. Clone + install
 
@@ -88,7 +88,8 @@ See **[docs/DESIGN.md](docs/DESIGN.md)** for the full system design with 13 merm
 git clone https://github.com/your-org/adforge.git
 cd adforge
 cp .env.example .env
-# Edit .env — at minimum set ZAI_API_KEY (or accept mock mode)
+# Edit .env — set APP_SECRET before enabling live writes. The default
+# Coarena free LLM endpoint needs no paid key.
 make install
 ```
 
@@ -96,7 +97,7 @@ make install
 
 ```bash
 make db-up
-make seed  # loads 3 example campaigns with KPI data
+make seed  # dev/test only: loads 3 example campaigns, KPI rows marked is_mock
 ```
 
 ### 3. Run the API + dashboard
@@ -118,7 +119,7 @@ make docker-up
 make docker-logs  # tail logs
 ```
 
-This brings up Postgres, Redis, all 5 local MCP servers, the official googleads/google-ads-mcp container, the FastAPI app, and the Streamlit dashboard — distributed across containers as designed.
+This brings up Postgres, Redis, all 7 local MCP servers, the official googleads/google-ads-mcp container, the FastAPI app, and the Streamlit dashboard — distributed across containers as designed.
 
 ---
 
@@ -192,7 +193,7 @@ AdForge integrates rather than reinvents. See **[docs/RESEARCH.md](docs/RESEARCH
 
 | Built by us | Because |
 |------------|---------|
-| 5 local MCP servers | AdForge domain logic (research, ads, analytics, roi, compliance) |
+| 7 local MCP servers | AdForge domain logic (research, ads, analytics, roi, compliance, public data, LinkedIn) |
 | 7 agents | The novel multi-agent ad orchestration |
 | Guardrails layer | No upstream package handles tenant isolation + audit + compliance |
 | LinkedIn MCP wrapper | No official LinkedIn MCP exists (as of Oct 2026) |
@@ -207,8 +208,11 @@ All configuration is env-driven via `adforge/config.py`. See `.env.example` for 
 | Env var | Default | Purpose |
 |---------|---------|---------|
 | `APP_ENV` | `dev` | `dev`/`test`/`staging`/`prod` — affects guardrail strictness |
-| `LLM_PROVIDER` | `glm` | `glm`/`openai`/`anthropic` |
-| `ZAI_API_KEY` | (empty) | Z.ai GLM API key — required unless in mock mode |
+| `LLM_PROVIDER` | `opencode` | `opencode`/`glm`/`openai`/`anthropic` |
+| `LLM_BASE_URL` | `https://coarena.ai/api/v1` | OpenAI-compatible endpoint (Coarena free tier by default) |
+| `LLM_MODEL` | `gpt-6-luna` | Model ID served by `LLM_BASE_URL`; fallback `gemini-3-8-flash` |
+| `LLM_API_KEY` | `coa_...` | Bearer token; Coarena free key (`$5/day`, 30 req/min, 2 concurrent) |
+| `ZAI_API_KEY` | (empty) | Z.ai GLM API key — only needed when `LLM_PROVIDER=glm` |
 | `DATABASE_URL` | auto-built from PG_* vars | Postgres connection string |
 | `REDIS_URL` | auto-built | Redis connection string |
 | `PIPEBOARD_API_TOKEN` | (empty) | If set, enables Meta + TikTok live data |
@@ -217,20 +221,75 @@ All configuration is env-driven via `adforge/config.py`. See `.env.example` for 
 | `GUARDRAILS_MAX_LLM_CALLS_PER_CAMPAIGN` | `200` | Hard ceiling on LLM spend per campaign |
 | `GUARDRAILS_REQUIRE_COMPLIANCE_APPROVAL` | `true` | Block publish calls without Compliance verdict |
 
-When API keys are absent, AdForge falls back to **mock mode** — every agent returns deterministic mock data so you can iterate on the dashboard + graph without spending money.
+When a credential or endpoint is absent, AdForge fails explicitly with a configuration error. It never substitutes fabricated ad performance or a fake publish success. Seeded demo data exists only in `dev`/`test`, is marked `is_mock=true`, and is refused in staging/prod.
+
+### Coarena free model API endpoint
+
+The default configuration points at the OpenAI-compatible Coarena free gateway
+(`LLM_PROVIDER=opencode`, `LLM_BASE_URL=https://coarena.ai/api/v1`). No paid key
+is required — Coarena provides `$5/day` of model usage, `30 req/min`, and
+`2 concurrent` requests. Quota exhaustion returns HTTP 429
+(`concurrency_limit_exceeded` / `insufficient_quota`) with `retry-after`; the
+live test skips on that response instead of failing. The opencode provider's
+opencode.ai-specific behaviours (TLS fingerprinting, session headers, `<env>`
+block) are hostname-gated, so any OpenAI-compatible base URL works unchanged.
+
+### MCP servers
+
+All first-party MCP servers start over stdio by default and are discovered by
+`adforge.mcp_servers.client`:
+
+```bash
+python -m adforge.mcp_servers.runner research   # web_search, wikipedia, ...
+python -m adforge.mcp_servers.runner ads        # composite: LinkedIn + Google + Pipeboard
+python -m adforge.mcp_servers.runner analytics  # persist/query/aggregate KPIs
+python -m adforge.mcp_servers.runner roi        # ROAS, CPA, payback
+python -m adforge.mcp_servers.runner compliance # policy evaluation
+python -m adforge.mcp_servers.runner linkedin   # LinkedIn ad analytics
+python -m adforge.mcp_servers.runner public_data # 12 free public-data tools
+```
+
+Set `MCP_ENABLED=false` to run the graph without spawning MCP subprocesses;
+agents then run LLM-only and no MCP tool can be invoked. External integrations
+(google-ads-mcp, Pipeboard) are enabled by setting the credentials documented in
+`.env.example`.
 
 ---
 
 ## Development
 
 ```bash
-make lint            # ruff check + mypy
-make test-unit       # pytest -m "not integration"
-make test-integration  # requires Postgres + Redis
-make test            # everything
+make lint              # ruff check + mypy
+make test-unit         # unit tier, fails under 90% coverage
+make test-integration  # embedded Postgres, fails under 90% coverage
+make test              # everything (live tests skip without opt-in)
 
-# Run the agent eval suite (used by CI)
-python -m adforge.utils.eval_runner --mock
+# Live tests are opt-in and call the configured LLM/ad-platform endpoints.
+# They skip automatically when credentials or free-tier quota are unavailable.
+ADFORGE_LIVE_TESTS=1 pytest -m live --timeout=900
+
+# Run the agent eval suite against the configured live LLM + ad APIs
+python -m adforge.utils.eval_runner
+```
+
+Test tiers:
+
+| Tier | Marker | Services | Scope |
+|------|--------|----------|-------|
+| Unit | *(default)* | fakeredis, scripted LLM, no DB | all of `adforge` |
+| Integration | `@pytest.mark.integration` | embedded PostgreSQL 18 | `api`, `graph`, `storage`, `mcp_servers.analytics`, `guardrails.data_isolation` |
+| Live | `@pytest.mark.live` | opencode.ai + ad platforms | opt-in via `ADFORGE_LIVE_TESTS=1` |
+
+Integration tests do not need Docker: `embedded-postgres` starts a throwaway
+server and applies `scripts/sql/init.sql`; Redis calls use `fakeredis` and fail
+open when unavailable.
+
+The opt-in end-to-end test (`tests/test_live_e2e.py`) runs the full API + graph
+against the configured real LLM and embedded PostgreSQL, pauses at HITL, then
+approves and resumes to `live`. It consumes several free-tier LLM calls:
+
+```bash
+ADFORGE_LIVE_TESTS=1 pytest tests/test_live_e2e.py --timeout=900
 ```
 
 ### Add a new agent

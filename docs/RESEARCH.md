@@ -13,13 +13,13 @@ the ad-campaign domain logic; everything below that line is delegated.
 |-------|----------|--------|
 | MCP ↔ LangGraph bridge | Use `langchain[mcp]` (the official post-migration package; `langchain-mcp-adapters` was archived Sep 2026 and merged in) | langchain-ai/langchain-mcp-adapters |
 | Google Ads (read KPIs) | Depend on **googleads/google-ads-mcp** (official, read-only) via subprocess/pipx | github.com/googleads/google-ads-mcp |
-| Google Ads (write — campaigns, bids) | Vendor a thin wrapper over `google-ads-python` (official client lib) as our own MCP server, referencing **clientskatbi/google-ads-campaign-mcp** for write-side patterns | github.com/clientskatbi/google-ads-campaign-mcp |
+| Google Ads (write — campaigns, bids) | No direct write client is bundled. Publishing goes through an explicitly configured, authenticated adapter webhook after HITL approval; writes are disabled by default. | new code |
 | Meta + TikTok + Snap + Reddit Ads | Depend on **Pipeboard MCP family** (open-source, OAuth, free tier, 230+ tools). Self-host option available. | github.com/pipeboard-co/meta-ads-mcp |
-| LinkedIn Ads (no official MCP) | Build our own small MCP server wrapping `linkedin-api` Python lib | new code, patterned after pipeboard-co |
+| LinkedIn Ads (no official MCP) | Build our own small MCP server over the official `/rest/adAnalytics` API | new code, patterned after pipeboard-co |
 | Multi-agent supervisor pattern | Reference **aws-samples/langgraph-multi-agent** (planning + execution split) | github.com/aws-samples/langgraph-multi-agent |
 | Competitor research tools | Vendor ideas from CrewAI research patterns + a generic web-search MCP (Tavily/Brave) | various |
 | LangGraph checkpointing | Use `langgraph-checkpoint-postgres` + `langgraph-checkpoint-redis` (official) | langchain-ai |
-| LLM provider | `zai-sdk` for GLM (default), `openai` + `anthropic` as alternates | upstream SDKs |
+| LLM provider | opencode.ai OpenAI-compatible endpoint (default, free tier), with `openai` + `anthropic` as alternates | upstream SDKs |
 
 ---
 
@@ -38,8 +38,9 @@ the ad-campaign domain logic; everything below that line is delegated.
 - **Install:** `pipx run --spec "git+https://github.com/googleads/google-ads-mcp.git" google-ads-mcp`
 - **Why use it:** It's the canonical Google Ads MCP. Our KPI/Analytics agent
   calls it via `langchain[mcp]` `MultiServerMCPClient`.
-- **Gap:** Read-only. For campaign create/update/budget changes we wrap
-  `google-ads-python` ourselves (small surface area).
+- **Gap:** Read-only. Campaign create/update/budget changes are orchestrator-only
+  and go through an authenticated adapter webhook after HITL approval; no native
+  write client is bundled, and writes are disabled by default.
 
 ### 2. `pipeboard-co/meta-ads-mcp` — USE HOSTED REMOTE MCP
 
@@ -100,12 +101,14 @@ the ad-campaign domain logic; everything below that line is delegated.
   MCP servers, rather than depending on CrewAI (different orchestration
   framework — would create an awkward dependency).
 
-### 7. Open-source `linkedin-api` Python lib — WRAP AS MCP
+### 7. LinkedIn Marketing API — CUSTOM MCP
 
-- **Repo:** https://github.com/orrivlin/linkedin-api (community-maintained)
-- **Why:** LinkedIn has no official MCP server (as of Oct 2026). We wrap
-  this lib's ad-account + reporting endpoints into a small custom MCP server
-  in `adforge/mcp_servers/ads/linkedin.py`.
+- **Endpoint:** `https://api.linkedin.com/rest/adAnalytics` (official)
+- **Why:** LinkedIn has no official MCP server (as of Oct 2026). Our small
+  custom MCP in `adforge/mcp_servers/ads/linkedin.py` calls the documented
+  reporting endpoint with a configured access token and ad-account ID. It
+  fails explicitly when credentials are missing rather than returning
+  fabricated analytics.
 
 ---
 
@@ -117,20 +120,19 @@ the ad-campaign domain logic; everything below that line is delegated.
 2. `pipeboard-co/meta-ads-mcp` family — Meta + TikTok + Snap + Reddit (remote OAuth)
 3. `langchain[mcp]` — MCP → LangGraph bridge (official post-migration package)
 4. `langgraph` + `langgraph-checkpoint-postgres` + `langgraph-checkpoint-redis`
-5. `google-ads-python`, `facebook-business`, `linkedin-api` — direct SDK clients (only for our thin write wrappers + LinkedIn MCP)
-6. `zai-sdk`, `openai`, `anthropic` — LLM providers
-7. `fastapi`, `streamlit`, `sqlalchemy`, `asyncpg`, `redis` — infra
+5. `openai`, `anthropic` — alternate LLM providers (the default is the opencode.ai OpenAI-compatible endpoint)
+6. `fastapi`, `streamlit`, `sqlalchemy`, `asyncpg`, `redis` — infra
 
 ### Built by us (the AdForge core)
 
 1. **Guardrails layer** — contracts, tenant isolation, rate limits, audit log, policy
 2. **7 agents** — Research, Creative, Media Planner, KPI Analytics, ROI, Compliance, Optimization
-3. **2 custom MCP servers** — LinkedIn Ads wrapper, AdForge Research MCP (competitor + keyword research with Tavily/Brave search)
+3. **7 first-party MCP servers** — research, ads, analytics, roi, compliance, public data, and LinkedIn Ads
 4. **LangGraph orchestrator** — graph topology, state schema, checkpointer wiring
 5. **FastAPI app** — campaign CRUD, agent invocation, KPI queries, trace endpoints
 6. **Streamlit dashboard** — campaign overview, agent traces, ROI calculator
 7. **3 example campaigns** — DTC SaaS, local restaurant, e-commerce
-8. **Docker-compose orchestration** — Postgres + Redis + 5 MCP servers + API + dashboard
+8. **Docker-compose orchestration** — Postgres + Redis + 7 MCP servers + API + dashboard
 
 ---
 
@@ -138,20 +140,20 @@ the ad-campaign domain logic; everything below that line is delegated.
 
 - **Pipeboard free-tier rate limits:** Need to confirm quotas before
   shipping production campaigns. Self-host fallback exists.
-- **LinkedIn API scope:** `linkedin-api` community lib uses undocumented
-  endpoints — may break with LinkedIn API changes. Long-term, replace with
-  official Marketing Developer Platform integration.
-- **Google Ads write path:** Official MCP is read-only. We write our own
-  thin wrapper using `google-ads-python` directly, which means our Media
-  Planner agent's "publish" tool isn't an MCP call — it's a direct lib call
-  guarded by Compliance agent approval.
+- **LinkedIn API scope:** The official `/rest/adAnalytics` endpoint requires
+  Marketing Developer Platform access and a configured ad-account ID. Live
+  calls skip when credentials are absent rather than simulating data.
+- **Google Ads write path:** The official MCP is read-only. Publishing is
+  orchestrator-only and goes through an authenticated adapter webhook after a
+  single-use HITL approval token; no write client is bundled, and writes are
+  disabled unless explicitly enabled and configured.
 
 ---
 
 ## Conclusion
 
-AdForge integrates ~6 existing open-source repos and writes ~6 custom
-components on top. The custom work is genuinely novel (multi-agent ad
-orchestration with guardrails + ROI calculator + compliance gate). The
-non-differentiated plumbing (ad-platform MCPs, MCP-LangGraph bridge,
-checkpointing) is delegated to upstream projects.
+AdForge integrates several existing open-source repos and writes the seven
+first-party MCP servers plus the multi-agent core on top. The custom work is
+genuinely novel (multi-agent ad orchestration with guardrails + ROI calculator
++ compliance gate). The non-differentiated plumbing (ad-platform MCPs,
+MCP-LangGraph bridge, checkpointing) is delegated to upstream projects.

@@ -228,7 +228,7 @@ sequenceDiagram
     Ads->>Perms: _verify_approval_token(token, campaign_id, "publish_campaign")
     Perms->>Perms: HMAC compare (constant-time)
     Perms-->>Ads: valid
-    Ads-->>Graph: external_campaign_id (mock in v0.3)
+    Ads-->>Graph: external_campaign_id from the configured adapter webhook
 ```
 
 ### Reject path (with revision loop)
@@ -464,14 +464,14 @@ flowchart LR
     Wiki -->|200 + results| Return2["return results<br/>provider=wikipedia"]
     Wiki -->|fail| Tavily{TAVILY_API_KEY<br/>configured?}
     Tavily -->|yes| TavilyAPI["call Tavily API<br/>paid fallback"]
-    Tavily -->|no| Mock["return mock results<br/>so agent doesn't crash"]
+    Tavily -->|no| Error["return explicit configuration error<br/>never fabricated results"]
     TavilyAPI -->|200| Return3["return results<br/>provider=tavily"]
-    TavilyAPI -->|error| Mock
+    TavilyAPI -->|error| Error
 
     style DDG fill:#c8e6c9,stroke:#1b5e20
     style Wiki fill:#c8e6c9,stroke:#1b5e20
     style TavilyAPI fill:#fff3e0,stroke:#e65100
-    style Mock fill:#ffcdd2,stroke:#b71c1c
+    style Error fill:#ffcdd2,stroke:#b71c1c
 ```
 
 ### Free public-data tool inventory

@@ -16,8 +16,9 @@ see the [main README](../README.md). For the open-source dependency audit see
    The API + dashboard + DB + Redis + MCP servers are all separate processes
    so we can scale horizontally per agent domain.
 4. **Vendor-agnostic.** LLM provider + ad-platform MCPs are swappable via
-   env vars. The default (GLM + mock ad data) runs end-to-end without any
-   paid credentials.
+   env vars. The default opencode.ai LLM endpoint runs without a paid key;
+   ad-platform tools fail explicitly when their credentials are missing
+   instead of returning fabricated data.
 5. **Audit everything.** Every LLM call, MCP tool call, guardrail firing
    is persisted to an append-only Postgres table. We can answer "why did
    your agent pause my campaign?" with evidence.
@@ -114,15 +115,21 @@ hint. This is the only deliberate simplification in v1.
 
 ### 5. MCP servers (`adforge/mcp_servers/`)
 
-Five local FastMCP servers, each in its own file:
+Seven local FastMCP servers, each runnable in its own process:
 
 | Server | Port | Tools | Backed by |
 |--------|------|-------|-----------|
-| `research.py` | 9001 | `web_search`, `serp_scrape`, `keyword_clusters`, `competitor_creatives` | Tavily API + mock fallback |
-| `ads/__init__.py` | 9002 | `list_channels`, `publish_campaign`, `pause_campaign`, `update_budget` | Mock in v1; production delegates to googleads/google-ads-mcp + Pipeboard + LinkedIn MCP |
+| `research.py` | 9001 | `web_search`, `wikipedia_search`, `serp_scrape`, `keyword_clusters`, `competitor_creatives` | Tavily / Wikipedia / DuckDuckGo; explicit configuration errors |
+| `ads/__init__.py` | 9002 | `list_channels`, `publish_campaign`, `pause_campaign`, `update_budget` | Read-only channel discovery; writes go through an authenticated adapter webhook after HITL approval |
 | `analytics.py` | 9003 | `persist_kpi_snapshot`, `query_kpis`, `aggregate_kpis` | Direct Postgres |
 | `roi.py` | 9004 | `compute_roas`, `compute_cpa`, `compute_payback_period`, `classify_recommendation` | Pure Python formulas |
 | `compliance.py` | 9005 | `evaluate_creative`, `list_blocked_terms`, `list_required_disclosures` | `guardrails.policy.PolicyEnforcer` |
+| `public_data.py` | 9007 | SimilarWeb, AppStore, IPInfo, AbuseIPDB, GitHub, Hacker News, Reddit, StackExchange, Product Hunt, OpenCorporates | Real public APIs; explicit configuration errors |
+| `ads/linkedin.py` | 9012 | `get_ad_analytics` | Official LinkedIn `/rest/adAnalytics` API |
+
+Only tools annotated `readOnlyHint=True` are exposed to the LLM. Write tools
+are orchestrator-only and require a single-use, tenant/campaign/reviewer-bound
+approval token.
 
 Plus two **external** MCP servers we integrate (no local code):
 
@@ -253,31 +260,29 @@ make docker-up
 
 Deliberately deferred:
 
-1. **MCP tool-calling loop inside agents.** The Research agent has MCP
-   tools wired but doesn't yet drive a multi-turn tool-call loop with
-   the LLM. v1 relies on the LLM's own knowledge for research; v2 will
-   add the `experimental_tool_loop` flag.
-2. **Live ad-platform write operations.** `publish_campaign` MCP tool
-   returns a mock external ID. Production needs to call Google Ads API
-   (via `google-ads-python` since the official MCP is read-only),
-   Meta Marketing API, etc.
-3. **Compliance revision loop.** When the Compliance agent rejects, we
-   currently proceed forward (with the rejection recorded). v2 will
-   route back to `creative_strategist` with a "revise per these issues"
-   hint.
-4. **LangSmith / LangGraph Studio trace UI.** Settings are wired
+1. **Live ad-platform write operations.** `publish_campaign` calls an
+   explicitly configured, authenticated publishing webhook after consuming
+   the HITL approval token. Native Google Ads / Meta Marketing API write
+   clients are not bundled yet; with no webhook configured, publishing fails
+   explicitly and nothing is launched.
+2. **Compliance revision loop.** The current loop is driven by the human
+   reviewer (reject → `creative_strategist`, up to 3 revisions). A fully
+   automatic compliance-rejection revision loop is deferred.
+3. **LangSmith / LangGraph Studio trace UI.** Settings are wired
    (`LANGSMITH_TRACING`) but the dashboard's "Agent Traces" page uses
    our own DB-backed view for now. LangSmith integration is a one-line
    config change away.
-5. **Real LinkedIn Marketing API integration.** The wrapper structure
-   exists; live calls are TODO. Mock mode is the default.
+4. **Per-user API auth.** API requests use a shared `X-API-Key` when
+   `API_AUTH_TOKEN` is set, plus the tenant header. Per-tenant JWTs remain
+   a roadmap item.
 
 ## Open questions
 
 - **Pipeboard rate limits** on the free tier — need to validate before
   shipping production campaigns. Self-host fallback exists.
-- **Google Ads write path** — official MCP is read-only. We'll write
-  our own thin wrapper over `google-ads-python` for the Media Planner's
-  `publish_campaign` tool. Small surface area.
+- **Google Ads write path** — the official MCP is read-only. Publishing is
+  orchestrator-only and calls an explicitly configured, authenticated adapter
+  webhook after a single-use HITL approval token. No native Google Ads / Meta
+  write client is bundled, and writes stay disabled by default.
 - **Multi-tenant auth on the API** — v1 uses a static `X-AdForge-Tenant`
   header. v2 should issue per-tenant JWTs.
