@@ -14,15 +14,14 @@ dependencies = [
     "langgraph-checkpoint-redis>=0.0.5",
     "langchain>=0.3.0",
     "langchain-core>=0.3.0",
-    "langchain[mcp]>=0.3.0",  # MCP ↔ LangGraph bridge (formerly langchain-mcp-adapters)
+    "langchain-mcp-adapters>=0.1.0",   # MCP <-> LangChain tool bridge
+    "pyyaml>=6.0.1",                   # policy rules + MCP config
 
     # --- MCP (official SDK) ---
     "mcp>=1.0.0",
-    "mcp[cli]>=1.0.0",
     "httpx>=0.27.0",
 
     # --- LLM providers ---
-    "zai-sdk>=0.1.0",
     "openai>=1.40.0",
     "anthropic>=0.34.0",
 
@@ -35,44 +34,46 @@ dependencies = [
     # --- Storage ---
     "sqlalchemy[asyncio]>=2.0.34",
     "asyncpg>=0.29.0",
+    "psycopg[binary,pool]>=3.2.0",    # LangGraph Postgres checkpointer
     "alembic>=1.13.0",
     "redis>=5.0.0",
-
-    # --- Ad platform SDKs ---
-    # google-ads-python: used by our thin write wrapper (read path goes via googleads/google-ads-mcp)
-    "google-ads>=24.0.0",
-    "google-auth-oauthlib>=1.2.0",
-    # facebook-business: used by our wrapper when self-hosting Meta (otherwise use Pipeboard remote MCP)
-    "facebook-business>=21.0.0",
-    # linkedin-api: community lib; we wrap as our own MCP (no official LinkedIn MCP exists)
-    "linkedin-api>=2.0.0",
-
-    # --- Dashboard ---
-    "streamlit>=1.38.0",
-    "plotly>=5.24.0",
-    "pandas>=2.2.0",
-
-    # --- Research agent tooling ---
-    "tavily-python>=0.5.0",  # web search MCP backing the Research agent
 
     # --- Tooling ---
     "tenacity>=9.0.0",
     "structlog>=24.4.0",
     "python-dotenv>=1.0.1",
     "click>=8.1.0",
-    "pipx>=1.7.0",  # used to launch googleads/google-ads-mcp as a subprocess
 ]
 
 [project.optional-dependencies]
+# Optional ad-platform SDKs. AdForge's KPI fetchers call the public HTTP APIs
+# directly, so none of these are required to run the platform. Some (notably
+# linkedin-api -> lxml) have no wheels for newer Python versions.
+platforms = [
+    "google-ads>=24.0.0",
+    "google-auth-oauthlib>=1.2.0",
+    "facebook-business>=21.0.0",
+    "tavily-python>=0.5.0",
+]
+
+dashboard = [
+    "streamlit>=1.38.0",
+    "plotly>=5.24.0",
+    "pandas>=2.2.0",
+]
+
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=5.0.0",
-    "httpx[cli]>=0.27.0",
+    "pytest-timeout>=2.3.1",
+    "pytest-mock>=3.14.0",
+    "respx>=0.21.0",
+    "fakeredis>=2.24.0",
+    "curl_cffi>=0.7.0",
+    "embedded-postgres>=18.0.0",
     "ruff>=0.6.0",
     "mypy>=1.11.0",
-    "respx>=0.21.0",
-    "pytest-mock>=3.14.0",
 ]
 
 [project.scripts]
@@ -101,10 +102,35 @@ known-first-party = ["adforge"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --cov=adforge --cov-report=term-missing"
+addopts = "-ra --strict-markers"
 markers = [
     "integration: marks tests that require DB / Redis / live APIs",
+    "live: marks tests that call a real external service (LLM endpoint, ad APIs)",
+]
+timeout = 120
+
+[tool.coverage.run]
+source = ["adforge"]
+branch = true
+omit = [
+    "adforge/dashboard/*",
+    "adforge/llm/zai_glm.py",
+    "adforge/llm/anthropic_provider.py",
+    "adforge/llm/openai_provider.py",
+    "adforge/mcp_servers/runner.py",
+    "adforge/storage/alembic_env.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
 ]
 
 [tool.mypy]

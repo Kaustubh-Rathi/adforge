@@ -27,6 +27,12 @@ Thumbs.db
 *.db
 logs/
 
+# Local demo artifacts (run dumps, browser screenshots, scratch)
+# DEMO_SCRIPT.md stays tracked - it is the demo runbook, not an artifact.
+.demo/tmp/
+.demo/screenshots/
+.demo/*.json
+
 # Credentials
 creds/*.json
 creds/*.pem

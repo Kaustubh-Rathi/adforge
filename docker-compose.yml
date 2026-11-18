@@ -1,3 +1,10 @@
+x-app-env: &app-env
+  POSTGRES_HOST: postgres
+  REDIS_HOST: redis
+  # Containers must listen on all interfaces; host port publishing is still
+  # restricted to 127.0.0.1 below.
+  MCP_BIND_HOST: 0.0.0.0
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -6,7 +13,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-adforge}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adforge_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-adforge}
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -19,7 +26,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: adforge-redis
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
@@ -31,8 +38,7 @@ services:
 
   # Official Google Ads MCP server (read-only KPI path).
   # Source: https://github.com/googleads/google-ads-mcp
-  # Launched via pipx to avoid vendoring; runs over stdio but we expose it as
-  # streamable_http on port 9006 so the KPI agent can talk to it remotely.
+  # Requires Google Cloud ADC mounted at /creds/gcp.json.
   mcp-google-ads-official:
     image: ghcr.io/googleads/google-ads-mcp:latest
     container_name: adforge-mcp-google-ads-official
@@ -42,24 +48,23 @@ services:
       MCP_PORT: 9006
       GOOGLE_PROJECT_ID: ${GOOGLE_PROJECT_ID:-}
       GOOGLE_APPLICATION_CREDENTIALS: /creds/gcp.json
-    ports: ["9006:9006"]
+    ports: ["127.0.0.1:9006:9006"]
     volumes:
       - ./creds:/creds:ro
-    # If no creds available, fall through to mock mode inside our wrapper.
 
   # Distributed MCP servers — one process per agent domain.
-  # Each runs independently so no single instance carries the full load.
-  # NOTE: Meta / TikTok / Snap / Reddit are reached via Pipeboard's hosted remote
-  # MCP (free tier). See docs/RESEARCH.md. No local container needed for them.
+  # Meta / TikTok / Snap / Reddit are reached via Pipeboard's hosted remote
+  # MCP when PIPEBOARD_API_TOKEN is configured.
   mcp-research:
     build: .
     container_name: adforge-mcp-research
     command: ["python", "-m", "adforge.mcp_servers.runner", "research"]
     env_file: .env
     environment:
+      <<: *app-env
       MCP_TRANSPORT: sse
-      MCP_PORT: ${MCP_RESEARCH_PORT:-9001}
-    ports: ["9001:9001"]
+      MCP_RESEARCH_PORT: ${MCP_RESEARCH_PORT:-9001}
+    ports: ["127.0.0.1:9001:9001"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -70,9 +75,10 @@ services:
     command: ["python", "-m", "adforge.mcp_servers.runner", "ads"]
     env_file: .env
     environment:
+      <<: *app-env
       MCP_TRANSPORT: sse
-      MCP_PORT: ${MCP_ADS_PORT:-9002}
-    ports: ["9002:9002"]
+      MCP_ADS_PORT: ${MCP_ADS_PORT:-9002}
+    ports: ["127.0.0.1:9002:9002"]
 
   mcp-analytics:
     build: .
@@ -80,11 +86,13 @@ services:
     command: ["python", "-m", "adforge.mcp_servers.runner", "analytics"]
     env_file: .env
     environment:
+      <<: *app-env
       MCP_TRANSPORT: sse
-      MCP_PORT: ${MCP_ANALYTICS_PORT:-9003}
-    ports: ["9003:9003"]
+      MCP_ANALYTICS_PORT: ${MCP_ANALYTICS_PORT:-9003}
+    ports: ["127.0.0.1:9003:9003"]
     depends_on:
       postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
 
   mcp-roi:
     build: .
@@ -92,9 +100,10 @@ services:
     command: ["python", "-m", "adforge.mcp_servers.runner", "roi"]
     env_file: .env
     environment:
+      <<: *app-env
       MCP_TRANSPORT: sse
-      MCP_PORT: ${MCP_ROI_PORT:-9004}
-    ports: ["9004:9004"]
+      MCP_ROI_PORT: ${MCP_ROI_PORT:-9004}
+    ports: ["127.0.0.1:9004:9004"]
 
   mcp-compliance:
     build: .
@@ -102,30 +111,52 @@ services:
     command: ["python", "-m", "adforge.mcp_servers.runner", "compliance"]
     env_file: .env
     environment:
+      <<: *app-env
       MCP_TRANSPORT: sse
-      MCP_PORT: ${MCP_COMPLIANCE_PORT:-9005}
-    ports: ["9005:9005"]
+      MCP_COMPLIANCE_PORT: ${MCP_COMPLIANCE_PORT:-9005}
+    ports: ["127.0.0.1:9005:9005"]
 
-  # v0.2: Public data MCP server — SimilarWeb + AppStore + IPInfo + AbuseIPDB.
-  # All tools are read-only. Gives the Research agent real public data without
-  # needing paid ad-platform credentials. See docs/RESEARCH.md.
   mcp-public-data:
     build: .
     container_name: adforge-mcp-public-data
     command: ["python", "-m", "adforge.mcp_servers.runner", "public_data"]
     env_file: .env
     environment:
+      <<: *app-env
       MCP_TRANSPORT: sse
-      MCP_PORT: ${MCP_PUBLIC_DATA_PORT:-9007}
-    ports: ["9007:9007"]
+      MCP_PUBLIC_DATA_PORT: ${MCP_PUBLIC_DATA_PORT:-9007}
+    ports: ["127.0.0.1:9007:9007"]
+
+  mcp-linkedin:
+    build: .
+    container_name: adforge-mcp-linkedin
+    command: ["python", "-m", "adforge.mcp_servers.runner", "linkedin"]
+    env_file: .env
+    environment:
+      <<: *app-env
+      MCP_TRANSPORT: sse
+      MCP_LINKEDIN_PORT: ${MCP_LINKEDIN_PORT:-9012}
+    ports: ["127.0.0.1:9012:9012"]
 
   # FastAPI orchestration layer
   api:
     build: .
     container_name: adforge-api
-    command: ["uvicorn", "adforge.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["uvicorn", "adforge.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     env_file: .env
-    ports: ["8000:8000"]
+    environment:
+      <<: *app-env
+      CHECKPOINTER_BACKEND: postgres
+      MCP_TRANSPORT: sse
+      MCP_RESEARCH_URL: http://mcp-research:9001/sse
+      MCP_ADS_URL: http://mcp-ads:9002/sse
+      MCP_ANALYTICS_URL: http://mcp-analytics:9003/sse
+      MCP_ROI_URL: http://mcp-roi:9004/sse
+      MCP_COMPLIANCE_URL: http://mcp-compliance:9005/sse
+      MCP_PUBLIC_DATA_URL: http://mcp-public-data:9007/sse
+      MCP_LINKEDIN_URL: http://mcp-linkedin:9012/sse
+      MCP_GOOGLE_ADS_OFFICIAL_URL: http://mcp-google-ads-official:9006/mcp
+    ports: ["127.0.0.1:8000:8000"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -134,8 +165,8 @@ services:
       mcp-analytics: { condition: service_started }
       mcp-roi: { condition: service_started }
       mcp-compliance: { condition: service_started }
-    volumes:
-      - ./adforge:/app/adforge:ro
+      mcp-public-data: { condition: service_started }
+      mcp-linkedin: { condition: service_started }
 
   # Streamlit dashboard
   dashboard:
@@ -143,11 +174,12 @@ services:
     container_name: adforge-dashboard
     command: ["streamlit", "run", "adforge/dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
     env_file: .env
-    ports: ["8501:8501"]
+    environment:
+      ADFORGE_API_URL: http://api:8000
+      ADFORGE_API_KEY: ${API_AUTH_TOKEN:-}
+    ports: ["127.0.0.1:8501:8501"]
     depends_on:
       api: { condition: service_started }
-    volumes:
-      - ./adforge:/app/adforge:ro
 
 volumes:
   pgdata:

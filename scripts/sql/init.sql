@@ -1,11 +1,9 @@
 -- AdForge — initial Postgres schema (run by docker-compose entrypoint)
 -- This is a fallback; in normal dev use Alembic manages migrations.
 
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TABLE IF NOT EXISTS campaigns (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(64) NOT NULL,
     name VARCHAR(200) NOT NULL,
     brief JSONB NOT NULL DEFAULT '{}',
@@ -21,7 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_campaigns_tenant ON campaigns(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);
 
 CREATE TABLE IF NOT EXISTS agent_runs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(64) NOT NULL,
     campaign_id UUID NOT NULL REFERENCES campaigns(id),
     request_id UUID NOT NULL,
@@ -43,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_name);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant ON agent_runs(tenant_id);
 
 CREATE TABLE IF NOT EXISTS kpi_snapshots (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(64) NOT NULL,
     campaign_id UUID NOT NULL REFERENCES campaigns(id),
     channel VARCHAR(32) NOT NULL,
@@ -59,6 +57,10 @@ CREATE TABLE IF NOT EXISTS kpi_snapshots (
     cpa DOUBLE PRECISION NOT NULL DEFAULT 0,
     cpm DOUBLE PRECISION NOT NULL DEFAULT 0,
     roas DOUBLE PRECISION NOT NULL DEFAULT 0,
+    downloads INTEGER NOT NULL DEFAULT 0,
+    source VARCHAR(32) NOT NULL DEFAULT 'unknown',
+    is_mock BOOLEAN NOT NULL DEFAULT FALSE,
+    platform_date DATE,
     captured_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -66,9 +68,11 @@ CREATE TABLE IF NOT EXISTS kpi_snapshots (
 CREATE INDEX IF NOT EXISTS idx_kpi_campaign ON kpi_snapshots(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_kpi_channel ON kpi_snapshots(channel);
 CREATE INDEX IF NOT EXISTS idx_kpi_tenant ON kpi_snapshots(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_kpi_daily
+    ON kpi_snapshots(tenant_id, campaign_id, channel, platform_date);
 
 CREATE TABLE IF NOT EXISTS creative_artifacts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(64) NOT NULL,
     campaign_id UUID NOT NULL REFERENCES campaigns(id),
     agent_name VARCHAR(64) NOT NULL DEFAULT 'creative_strategist',
@@ -84,7 +88,7 @@ CREATE TABLE IF NOT EXISTS creative_artifacts (
 );
 
 CREATE TABLE IF NOT EXISTS audit_events (
-    event_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_type VARCHAR(64) NOT NULL,
     tenant_id VARCHAR(64) NOT NULL,
     campaign_id UUID,
