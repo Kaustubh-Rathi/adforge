@@ -17,6 +17,15 @@ class LLMUsage:
 
 
 @dataclass
+class ToolCall:
+    """One tool invocation requested by the model."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class LLMResponse:
     """Normalised LLM response. Agents consume .content; BaseAgent logs .usage."""
 
@@ -24,6 +33,7 @@ class LLMResponse:
     usage: LLMUsage = field(default_factory=LLMUsage)
     raw: dict[str, Any] = field(default_factory=dict)
     finish_reason: str = "stop"
+    tool_calls: list[ToolCall] = field(default_factory=list)
 
 
 class LLMProvider(ABC):
@@ -32,7 +42,7 @@ class LLMProvider(ABC):
     @abstractmethod
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,

@@ -16,7 +16,7 @@ def get_llm() -> LLMProvider:
     ``get_llm.cache_clear()`` after monkeypatching settings.
     """
     settings = get_settings()
-    provider: Literal["glm", "openai", "anthropic"] = settings.llm_provider
+    provider: Literal["glm", "openai", "anthropic", "opencode"] = settings.llm_provider
 
     if provider == "glm":
         from adforge.llm.zai_glm import ZaiGLMProvider
@@ -27,5 +27,8 @@ def get_llm() -> LLMProvider:
     elif provider == "anthropic":
         from adforge.llm.anthropic_provider import AnthropicProvider
         return AnthropicProvider()
+    elif provider == "opencode":
+        from adforge.llm.opencode_provider import OpencodeProvider
+        return OpencodeProvider()
     else:  # pragma: no cover
         raise ValueError(f"Unknown LLM provider: {provider}")

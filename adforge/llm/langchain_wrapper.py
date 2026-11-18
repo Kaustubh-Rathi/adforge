@@ -9,13 +9,12 @@ Z.ai GLM provider (or any other provider we add).
 """
 from __future__ import annotations
 
-import json
-from typing import Any, AsyncIterator, Optional
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from pydantic import Field
+from pydantic import PrivateAttr
 
 from adforge.llm.base import LLMProvider
 
@@ -71,7 +70,7 @@ class LangChainLLMWrapper(BaseChatModel):
         generation = ChatGeneration(message=ai_message)
         return ChatResult(generations=[generation])
 
-    def bind_tools(self, tools: list, **kwargs: Any) -> "LangChainLLMWrapper":
+    def bind_tools(self, tools: list, **kwargs: Any) -> LangChainLLMWrapper:
         """Store the tool schemas for the next call.
 
         The actual tool dispatch is handled by LangGraph's ToolNode — the
@@ -96,4 +95,4 @@ class LangChainLLMWrapper(BaseChatModel):
         bound._bound_tools = tool_schemas  # type: ignore[attr-defined]
         return bound
 
-    _bound_tools: list = Field(default_factory=list, exclude=True)
+    _bound_tools: list = PrivateAttr(default_factory=list)

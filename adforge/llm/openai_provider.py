@@ -1,11 +1,12 @@
 """OpenAI adapter — swap in by setting LLM_PROVIDER=openai."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from adforge.config import get_settings
-from adforge.llm.base import LLMProvider, LLMResponse, LLMUsage
 from adforge.guardrails.exceptions import GuardrailError
+from adforge.llm.base import LLMProvider, LLMResponse, LLMUsage, ToolCall
 
 
 class OpenAIProvider(LLMProvider):
@@ -17,11 +18,15 @@ class OpenAIProvider(LLMProvider):
             raise GuardrailError("OPENAI_API_KEY not set — cannot init OpenAIProvider.")
         # Lazy import so users who never use OpenAI don't pay the install cost.
         from openai import AsyncOpenAI
-        self._client = AsyncOpenAI(api_key=self.api_key)
+        self._client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=s.openai_base_url,
+            timeout=s.llm_timeout,
+        )
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
@@ -44,9 +49,21 @@ class OpenAIProvider(LLMProvider):
             completion_tokens=resp.usage.completion_tokens if resp.usage else 0,
             total_tokens=resp.usage.total_tokens if resp.usage else 0,
         )
+        tool_calls: list[ToolCall] = []
+        for call in choice.message.tool_calls or []:
+            try:
+                arguments = json.loads(call.function.arguments or "{}")
+            except ValueError:
+                arguments = {"_raw_arguments": call.function.arguments}
+            if not isinstance(arguments, dict):
+                arguments = {"value": arguments}
+            tool_calls.append(
+                ToolCall(id=call.id, name=call.function.name, arguments=arguments)
+            )
         return LLMResponse(
             content=choice.message.content or "",
             usage=usage,
             raw=resp.model_dump(),
             finish_reason=choice.finish_reason or "stop",
+            tool_calls=tool_calls,
         )
