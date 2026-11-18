@@ -32,6 +32,10 @@ st.set_page_config(
 
 inject_css()
 
+# The sidebar tenant switcher scopes every page's API calls (pages read the
+# selection through api.current_tenant()).
+api.tenant_switcher()
+
 # --------------------------------------------------------------------------- #
 # Masthead
 # --------------------------------------------------------------------------- #

@@ -22,6 +22,7 @@ from adforge.dashboard.theme import (
 )
 
 inject_css()
+api.tenant_switcher()
 
 # Packet documents render as label/value dossiers; the risk accent stripe is
 # the only colour these cards are allowed to use.

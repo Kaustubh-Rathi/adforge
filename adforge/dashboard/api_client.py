@@ -11,14 +11,56 @@ from adforge.config import get_settings
 
 _settings = get_settings()
 API_BASE = os.getenv("ADFORGE_API_URL", _settings.dashboard_api_url).rstrip("/")
-TENANT = os.getenv("APP_TENANT_ID", _settings.app_tenant_id)
+DEFAULT_TENANT = os.getenv("APP_TENANT_ID", _settings.app_tenant_id)
 API_KEY = os.getenv("ADFORGE_API_KEY", os.getenv("API_AUTH_TOKEN", ""))
 _HTTP_TIMEOUT = _settings.dashboard_http_timeout
 _RUN_TIMEOUT = _settings.dashboard_run_timeout
 
+#: Tenants offered in the sidebar switcher. The demo seeds one campaign per
+#: tenant, and the default ``demo_tenant`` is where live runs land, so a fixed
+#: list keeps the demo navigable without a tenant-admin API.
+KNOWN_TENANTS: tuple[str, ...] = (
+    DEFAULT_TENANT,
+    "tenant_acme_saas",
+    "tenant_bloom_bistro",
+    "tenant_vertex_audio",
+)
+
+
+def current_tenant() -> str:
+    """The tenant this page should talk to.
+
+    Streamlit reruns the whole script on each interaction, so the switcher's
+    value lives in ``st.session_state`` and every call reads it here. Kept out
+    of the per-request helpers so pages never pass a tenant around by hand.
+    """
+    try:
+        import streamlit as st
+
+        chosen = st.session_state.get("tenant")
+    except Exception:  # not running inside Streamlit (tests, CLI)
+        chosen = None
+    return str(chosen or DEFAULT_TENANT)
+
+
+def tenant_switcher() -> None:
+    """Render the sidebar tenant picker (call once, from the home page)."""
+    import streamlit as st
+
+    options = list(dict.fromkeys(KNOWN_TENANTS))
+    if st.session_state.get("tenant") not in options:
+        st.session_state["tenant"] = DEFAULT_TENANT
+    st.sidebar.selectbox(
+        "Tenant",
+        options=options,
+        key="tenant",
+        help="Every API call is scoped to this tenant; the API rejects reads "
+        "outside it.",
+    )
+
 
 def _headers(extra: dict[str, str] | None = None) -> dict[str, str]:
-    h = {"X-AdForge-Tenant": TENANT}
+    h = {"X-AdForge-Tenant": current_tenant()}
     if API_KEY:
         h["X-API-Key"] = API_KEY
     if extra:

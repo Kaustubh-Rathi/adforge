@@ -145,7 +145,19 @@ _CSS = """
   --af-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
 }
 
-html, body, [class*="st-"] { font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; }
+html, body { font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; }
+/* Streamlit renders icons as Material Symbols ligatures (e.g. the literal text
+   "keyboard_double_arrow_right"). A blanket [class*="st-"] font rule catches
+   those spans too and turns every icon into its raw ligature name, so scope the
+   body font to text containers only and let the icon font win. */
+.stApp, .stApp p, .stApp label, .stApp input, .stApp textarea, .stApp button,
+.stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+[data-testid="stMarkdownContainer"], [data-testid="stWidgetLabel"] {
+  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+}
+[data-testid="stIconMaterial"], .material-symbols-rounded, .material-icons {
+  font-family: 'Material Symbols Rounded', 'Material Icons' !important;
+}
 .stApp { background: var(--af-canvas); color: var(--af-body); }
 .block-container { padding-top: 0.6rem; padding-bottom: 3.5rem; max-width: 1280px; }
 

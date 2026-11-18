@@ -9,6 +9,7 @@ import streamlit as st
 from adforge.dashboard import api_client as api
 from adforge.dashboard.theme import (
     af_badge,
+    af_caption,
     af_metric,
     af_section,
     inject_css,
@@ -16,6 +17,7 @@ from adforge.dashboard.theme import (
 )
 
 inject_css()
+api.tenant_switcher()
 
 # Page-local styles for the campaign ledger rows (the theme owns everything else).
 st.markdown(
@@ -45,6 +47,7 @@ st.markdown(
 _REVIEW_STATUSES = {"reviewing", "pending", "awaiting_review", "in_review"}
 
 af_section("Campaigns", "Create briefs, run the seven-agent graph, track spend.")
+af_caption(f"Tenant: {api.current_tenant()}")
 
 try:
     campaigns: list[dict[str, Any]] = api.list_campaigns()

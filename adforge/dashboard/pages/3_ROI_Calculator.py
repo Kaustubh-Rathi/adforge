@@ -19,6 +19,7 @@ from adforge.dashboard.theme import (
 )
 
 inject_css()
+api.tenant_switcher()
 
 # The verdict banner is this page's one loud element; everything else stays quiet.
 st.markdown(

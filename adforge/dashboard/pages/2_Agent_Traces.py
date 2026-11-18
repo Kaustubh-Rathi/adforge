@@ -17,6 +17,7 @@ from adforge.dashboard.theme import (
 )
 
 inject_css()
+api.tenant_switcher()
 
 st.markdown(
     """
