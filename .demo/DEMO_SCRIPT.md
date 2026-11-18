@@ -75,3 +75,6 @@ Open http://localhost:8501 — show the architecture diagram on the home page.
 - **Verify the machine before going live:** `python .demo/verify_e2e.py` runs the
   whole pipeline (create → run → HITL approve → KPI/ROI/optimization → traces)
   against the live API and prints a pass/fail line per check.
+  `python .demo/verify_review_paths.py` covers the other two review outcomes
+  (reject → revision, publish → refused without an adapter). Both clean up after
+  themselves.
