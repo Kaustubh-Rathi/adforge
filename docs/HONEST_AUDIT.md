@@ -413,3 +413,37 @@ Remaining environment limits (unchanged from the roadmap):
 3. The opencode free tier is rate limited (`429 FreeUsageLimitError`). The live
    health test skips on quota exhaustion; the full live e2e consumes several
    calls and should be run deliberately.
+
+## Zero-paid-key demo verification (2026-11-18)
+
+A demo-hardening pass against a live stack (Docker Postgres 16 + Redis 7, API on
+:8000, Streamlit on :8501, LLM = Coarena free tier). Everything below was
+observed, not inferred from tests.
+
+| Check | Result |
+|-------|--------|
+| Full non-live suite | **665 passed, 6 skipped** on the committed tree; **680 passed** after the dashboard/seed fixes in this pass. The skips are the live-service suites, which require `ADFORGE_LIVE_TESTS=1`. |
+| End-to-end demo run (`.demo/verify_e2e.py`) | Create → run → HITL pause → approve → resume through KPI/ROI/optimization → traces/audit/KPI endpoints/isolation: **all checks pass**. Seven agent runs recorded, 55+ audit events, cross-tenant read returns 404. |
+| Real research output | Live sources returned (Grand View Research / Future Market Insights product-analytics market reports); not fabricated. |
+| Compliance behaviour | Correctly flags real copy against real channel limits (e.g. a headline over Google's 30-char cap) with `risk_level` and flagged issues. |
+
+Defects found and fixed during this pass:
+
+| Defect | Impact | Fix |
+|--------|--------|-----|
+| KPI API dropped `is_mock` | The dashboard's core honesty claim — "these figures are simulated" — could not be proven from the API at all. The column was populated, the response omitted it. | Snapshot and aggregate responses now return `is_mock`; aggregate also exposes `all_simulated` so a bucket mixing real and simulated rows is never reported as real. The ROI page renders a caption from that flag and tags each row Simulated/Measured. |
+| `make seed` was not idempotent | Every run inserted fresh random campaign ids, cloning all three example campaigns and doubling their KPIs. In the live DB this had already produced two copies of each seeded campaign. | Campaign ids derive from tenant+name via `uuid5`; the insert upserts and the previous KPI rows are deleted first. Per-campaign RNG keeps the numbers reproducible. Verified by seeding twice: 4 campaigns / 119 KPI rows both times. |
+| Theme overrode Streamlit's icon font | `[class*="st-"]` also matched Streamlit's icon spans, replacing Material Symbols — every icon rendered as raw ligature text (`keyboard_double_arrow_right`, `arrow_right`). | Body font scoped to text containers; icon font pinned explicitly. |
+| Dashboard pinned to one tenant | The three seeded campaigns live in their own tenants, so the Campaigns page showed an empty console and the seeded tour in the demo script was impossible. | Sidebar tenant switcher backed by session state; pages read it through `api_client.current_tenant()`. Stale selections reset to the configured default. |
+
+Still open for the demo (not defects, deliberate scope):
+
+1. No video/live-recording artifact yet; `.demo/DEMO_SCRIPT.md` is the runbook.
+2. `make lint` does not pass on `main`: `ruff check` reports 24 pre-existing
+   findings (mostly FastAPI `Depends` in defaults, `B008`, plus test style
+   rules), `ruff format --check` would reformat 94 files, and `mypy` reports 67
+   errors across 22 files. None are introduced by this pass, but the lint gate
+   advertised in the README does not currently hold.
+3. Publishing still requires a real, authenticated webhook; `POST
+   /reviews/{id}/publish` is the only path from `approved` to `live` and it
+   stays disabled without `ADFORGE_ENABLE_LIVE_WRITES`.

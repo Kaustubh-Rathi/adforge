@@ -100,6 +100,12 @@ make db-up
 make seed  # dev/test only: loads 3 example campaigns, KPI rows marked is_mock
 ```
 
+`make seed` is idempotent — re-running it rewrites the same campaigns instead of
+duplicating them, so a demo environment can be reset safely. Each example lives
+in its own tenant (`tenant_acme_saas`, `tenant_bloom_bistro`,
+`tenant_vertex_audio`); use the dashboard's sidebar **Tenant** switcher to view
+them.
+
 ### 3. Run the API + dashboard
 
 In one terminal:
