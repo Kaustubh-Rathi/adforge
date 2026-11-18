@@ -1,0 +1,22 @@
+{
+  "code": 0,
+  "message": "OK",
+  "data": {
+    "list": [
+      {
+        "dimensions": {
+          "campaign_id": "789",
+          "stat_time_day": "2026-01-02 00:00:00"
+        },
+        "metrics": {
+          "impressions": "2500",
+          "clicks": "100",
+          "spend": "20.0",
+          "conversions": "10",
+          "complete_payment": "500",
+          "app_install": "7"
+        }
+      }
+    ]
+  }
+}

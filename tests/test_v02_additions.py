@@ -1,13 +1,14 @@
 """Tests for v0.2 additions: HITL review, read-only enforcement, public-data MCP."""
 from __future__ import annotations
 
-import asyncio
 import json
 from uuid import uuid4
 
+import httpx
 import pytest
+import respx
 
-from adforge.mcp_servers import permissions, public_data, ads
+from adforge.mcp_servers import ads, permissions, public_data
 
 
 class TestPermissions:
@@ -53,22 +54,37 @@ class TestPermissions:
             operation="publish",
             reviewer_email="reviewer@example.com",
             ttl_seconds=60,
+            tenant_id="acme",
         )
-        assert campaign_id in token
-        assert "reviewer@example.com" in token
-
-        # Verify the token
-        assert permissions._verify_approval_token(token, campaign_id, "publish") is True
+        assert token.startswith("v2.")
+        claims = permissions._verify_approval_claims(
+            token, campaign_id, "publish", tenant_id="acme"
+        )
+        assert claims is not None
+        assert claims["reviewer_email"] == "reviewer@example.com"
         # Wrong campaign must fail
         assert permissions._verify_approval_token(token, str(uuid4()), "publish") is False
         # Wrong operation must fail
         assert permissions._verify_approval_token(token, campaign_id, "pause") is False
+        # Wrong tenant must fail
+        assert (
+            permissions._verify_approval_token(
+                token, campaign_id, "publish", tenant_id="other"
+            )
+            is False
+        )
 
     @pytest.mark.asyncio
+    @respx.mock
     async def test_write_operation_succeeds_with_valid_token(self, monkeypatch):
         from adforge.config import get_settings
-        get_settings.cache_clear()
+
         monkeypatch.setenv("APP_SECRET", "test-secret-12345")
+        monkeypatch.setenv("ADFORGE_ENABLE_LIVE_WRITES", "true")
+        monkeypatch.setenv(
+            "ADFORGE_PUBLISH_WEBHOOK_URL", "https://ads.example.test/publish"
+        )
+        get_settings.cache_clear()
         campaign_id = str(uuid4())
 
         token = permissions.issue_approval_token(
@@ -76,6 +92,12 @@ class TestPermissions:
             operation="publish_campaign",
             reviewer_email="reviewer@example.com",
             ttl_seconds=60,
+            tenant_id="acme",
+        )
+        route = respx.post("https://ads.example.test/publish").mock(
+            return_value=httpx.Response(
+                200, json={"external_campaign_id": "ext-123", "status": "paused"}
+            )
         )
 
         # The ads MCP's publish_campaign uses @write_operation
@@ -92,8 +114,9 @@ class TestPermissions:
             },
         )
         data = json.loads(result)
-        assert "external_campaign_id" in data
+        assert data["external_campaign_id"] == "ext-123"
         assert data["published_with_approval"] is True
+        assert route.calls[0].request.headers["content-type"] == "application/json"
 
 
 class TestAdsMcpPermissions:
@@ -150,7 +173,7 @@ class TestPublicDataMcp:
         assert data["stars"] > 1000  # langgraph definitely has >1k stars
 
     @pytest.mark.asyncio
-    async def test_abuseipdb_returns_mock_without_key(self, monkeypatch):
+    async def test_abuseipdb_requires_key(self, monkeypatch):
         from adforge.config import get_settings
         get_settings.cache_clear()
         monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
@@ -158,10 +181,10 @@ class TestPublicDataMcp:
             "1.2.3.4", headers={"X-AdForge-Tenant": "acme"}
         )
         data = json.loads(result)
-        assert data.get("mock") is True
+        assert data["error"] == "abuseipdb_not_configured"
 
     @pytest.mark.asyncio
-    async def test_similarweb_returns_mock_without_key(self, monkeypatch):
+    async def test_similarweb_requires_key(self, monkeypatch):
         from adforge.config import get_settings
         get_settings.cache_clear()
         monkeypatch.delenv("SIMILARWEB_API_KEY", raising=False)
@@ -169,8 +192,8 @@ class TestPublicDataMcp:
             "example.com", headers={"X-AdForge-Tenant": "acme"}
         )
         data = json.loads(result)
-        assert data.get("mock") is True
-        assert "visits_30d" in data
+        assert data["error"] == "similarweb_not_configured"
+        assert "visits_30d" not in data
 
     def test_all_public_data_tools_are_readonly(self):
         """Verify no public-data tool can mutate external state."""
@@ -209,7 +232,7 @@ class TestGraphWithHitl:
         assert route_after_review(state) == "__end__"
 
     def test_route_after_review_auto_blocked_ends(self):
-        from adforge.graph.state import route_after_review, END
+        from adforge.graph.state import END, route_after_review
         state = {"review_status": "auto_blocked"}
         assert route_after_review(state) == END
 

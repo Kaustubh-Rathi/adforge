@@ -5,23 +5,78 @@ import json
 
 import pytest
 
-from adforge.mcp_servers import research, roi, compliance
+from adforge.mcp_servers import compliance, research, roi
 
 
 class TestResearchMcp:
     @pytest.mark.asyncio
     async def test_web_search_requires_tenant_header(self):
-        result = await research.web_search("test query", headers=None)
-        data = json.loads(result)
-        assert "error" in data or "results" in data  # mock mode returns results
+        with pytest.raises(ValueError, match="X-AdForge-Tenant"):
+            await research.web_search("test query", headers=None)
 
     @pytest.mark.asyncio
-    async def test_web_search_with_tenant(self):
+    async def test_web_search_uses_duckduckgo_first(self, monkeypatch):
+        async def fake_ddg(query, max_results):
+            return [
+                {"title": "CRM guide", "url": "https://example.com/crm", "snippet": "Best CRM"}
+            ]
+
+        async def fail_wiki(query, n):
+            raise AssertionError("wikipedia must not be reached")
+
+        monkeypatch.setattr(research, "_duckduckgo_search", fake_ddg)
+        monkeypatch.setattr(research, "_wikipedia_search", fail_wiki)
+
         result = await research.web_search(
             "best CRM for startups", headers={"X-AdForge-Tenant": "acme"}
         )
         data = json.loads(result)
-        assert "results" in data or "answer" in data
+        assert data["provider"] == "duckduckgo"
+        assert data["results"][0]["title"] == "CRM guide"
+
+    @pytest.mark.asyncio
+    async def test_web_search_falls_back_to_wikipedia(self, monkeypatch):
+        async def empty_ddg(query, max_results):
+            return []
+
+        async def empty_ddg_lite(query, max_results):
+            return []
+
+        async def empty_bing_rss(query, max_results):
+            return []
+
+        async def fake_wiki(query, n):
+            return [{"title": "CRM", "url": "https://en.wikipedia.org/wiki/CRM", "snippet": ""}]
+
+        monkeypatch.setattr(research, "_duckduckgo_search", empty_ddg)
+        monkeypatch.setattr(research, "_ddg_lite_search", empty_ddg_lite)
+        monkeypatch.setattr(research, "_bing_rss_search", empty_bing_rss)
+        monkeypatch.setattr(research, "_wikipedia_search", fake_wiki)
+        result = await research.web_search(
+            "CRM", headers={"X-AdForge-Tenant": "acme"}
+        )
+        assert json.loads(result)["provider"] == "wikipedia"
+
+    @pytest.mark.asyncio
+    async def test_web_search_reports_no_provider_when_all_fail(self, monkeypatch):
+        async def empty(query, n):
+            return []
+
+        async def no_tavily(query, n):
+            return {"error": "no key"}
+
+        monkeypatch.setattr(research, "_duckduckgo_search", empty)
+        monkeypatch.setattr(research, "_ddg_lite_search", empty)
+        monkeypatch.setattr(research, "_bing_rss_search", empty)
+        monkeypatch.setattr(research, "_wikipedia_search", empty)
+        monkeypatch.setattr(research, "_tavily_search", no_tavily)
+        result = await research.web_search(
+            "obscure query", max_results=3, headers={"X-AdForge-Tenant": "acme"}
+        )
+        data = json.loads(result)
+        assert data["provider"] == "none"
+        assert data["results"] == []
+        assert "no simulated results" in data["error"]
 
     @pytest.mark.asyncio
     async def test_keyword_clusters_returns_n_keywords(self):
@@ -79,3 +134,15 @@ class TestComplianceMcp:
         data = json.loads(result)
         assert len(data["blocked"]) > 0
         assert any(r["rule_id"] == "BLOCK_TOBACCO" for r in data["blocked"])
+
+    @pytest.mark.asyncio
+    async def test_list_required_disclosures(self):
+        result = await compliance.list_required_disclosures(
+            headers={"X-AdForge-Tenant": "acme"}
+        )
+        data = json.loads(result)
+        assert data["disclosures"]
+        assert any(
+            row["required_disclosure"] for row in data["disclosures"]
+        )
+        assert all(row["rule_id"] for row in data["disclosures"])

@@ -1,0 +1,12 @@
+{
+  "elements": [
+    {
+      "dateRange": {"start": {"year": 2026, "month": 1, "day": 2}},
+      "impressions": 1500,
+      "clicks": 60,
+      "costInLocalCurrency": "9.5",
+      "externalWebsiteConversions": 6,
+      "conversionValueInLocalCurrency": "240"
+    }
+  ]
+}

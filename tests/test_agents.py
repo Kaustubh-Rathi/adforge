@@ -4,14 +4,12 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
-import pytest
-
-from adforge.agents.research.agent import ResearchAgent
+from adforge.agents.compliance.agent import ComplianceAgent
 from adforge.agents.creative_strategist.agent import CreativeStrategistAgent
 from adforge.agents.media_planner.agent import MediaPlannerAgent
-from adforge.agents.compliance.agent import ComplianceAgent
-from adforge.agents.roi_calculator.agent import RoiCalculatorAgent
 from adforge.agents.optimization.agent import OptimizationAgent
+from adforge.agents.research.agent import ResearchAgent
+from adforge.agents.roi_calculator.agent import RoiCalculatorAgent
 from adforge.guardrails.contracts import AgentInput, CampaignBrief
 
 

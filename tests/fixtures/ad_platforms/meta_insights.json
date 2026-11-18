@@ -1,0 +1,20 @@
+{
+  "data": [
+    {
+      "campaign_id": "456",
+      "campaign_name": "Acme PM",
+      "date_start": "2026-01-02",
+      "date_stop": "2026-01-02",
+      "impressions": "2000",
+      "clicks": "80",
+      "spend": "12.50",
+      "actions": [
+        {"action_type": "purchase", "value": "8"},
+        {"action_type": "landing_page_view", "value": "99"}
+      ],
+      "action_values": [
+        {"action_type": "purchase", "value": "400"}
+      ]
+    }
+  ]
+}

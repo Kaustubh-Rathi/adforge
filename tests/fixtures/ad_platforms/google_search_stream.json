@@ -1,0 +1,28 @@
+[
+  {
+    "results": [
+      {
+        "campaign": {"id": "123"},
+        "segments": {"date": "2026-01-02"},
+        "metrics": {
+          "impressions": "1000",
+          "clicks": "50",
+          "costMicros": "5000000",
+          "conversions": "5",
+          "conversionsValue": "300"
+        }
+      },
+      {
+        "campaign": {"id": "123"},
+        "segments": {"date": "2026-01-03"},
+        "metrics": {
+          "impressions": "2000",
+          "clicks": "100",
+          "costMicros": "10000000",
+          "conversions": "10",
+          "conversionsValue": "600"
+        }
+      }
+    ]
+  }
+]
