@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import AsyncIterator
+import sys
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -82,15 +84,40 @@ async def root() -> dict[str, object]:
     }
 
 
+def _loop_factory() -> Callable[[], asyncio.AbstractEventLoop] | None:
+    """A loop psycopg's async driver can use.
+
+    Windows defaults ``asyncio`` to ``ProactorEventLoop``, which psycopg
+    refuses to run in async mode. Without this the Postgres checkpointer fails
+    to initialise and the API silently falls back to a non-durable
+    ``MemorySaver``, so a paused human review would be lost on restart.
+    """
+    if sys.platform == "win32":
+        return asyncio.SelectorEventLoop
+    return None
+
+
 def run() -> None:
     """Entry point for the `adforge-api` console script."""
     settings = get_settings()
-    uvicorn.run(
+    if settings.app_env == "dev":
+        # uvicorn's reloader already gives the child a selector loop on
+        # Windows; keep hot reload for development.
+        uvicorn.run(
+            "adforge.api.main:app",
+            host=settings.api_host,
+            port=settings.api_port,
+            reload=True,
+        )
+        return
+
+    config = uvicorn.Config(
         "adforge.api.main:app",
         host=settings.api_host,
         port=settings.api_port,
-        reload=settings.app_env == "dev",
     )
+    with asyncio.Runner(loop_factory=_loop_factory()) as runner:
+        runner.run(uvicorn.Server(config).serve())
 
 
 if __name__ == "__main__":

@@ -285,17 +285,24 @@ class TestTraceRoutes:
 
 
 class _FakeGraph:
-    def __init__(self, state, next_nodes=(), error=None):
+    def __init__(self, state, next_nodes=(), error=None, parked=True):
         self.state = state
         self.next = tuple(next_nodes)
         self.error = error
+        self.parked = parked
+        self.invoked = False
 
     async def ainvoke(self, command, config):
+        self.invoked = True
         if self.error:
             raise self.error
         return self.state
 
     async def aget_state(self, config):
+        # Before the resume the campaign is parked at the gate; afterwards the
+        # snapshot reflects whatever the resumed graph produced.
+        if not self.invoked:
+            return SimpleNamespace(next=("human_review",) if self.parked else ())
         return SimpleNamespace(next=self.next)
 
 
@@ -349,6 +356,18 @@ class TestReviewHelpers:
             await reviews._resume_graph(uuid4(), None, "", False)
         assert exc.value.status_code == 500
         assert "checkpoint offline" in exc.value.detail
+
+    async def test_resume_refuses_when_no_checkpoint_is_parked(self, monkeypatch):
+        """A lost checkpoint must not silently re-run the graph."""
+
+        async def no_gate():
+            return _FakeGraph({}, parked=False)
+
+        monkeypatch.setattr(reviews, "get_compiled_graph", no_gate)
+        with pytest.raises(HTTPException) as exc:
+            await reviews._resume_graph(uuid4(), "rev@acme.test", "", True)
+        assert exc.value.status_code == 409
+        assert "no paused human-review checkpoint" in exc.value.detail
 
     async def test_reviewer_allowlist_blocks_unknown_reviewers(self, monkeypatch):
         from adforge.config import get_settings

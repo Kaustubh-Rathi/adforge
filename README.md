@@ -43,7 +43,7 @@ The dashboard answers one question: **was it worth it?**
 | **ROI Calculator** — the verdict, per channel | **Review Queue** — the human gate before anything launches |
 
 A narrated walkthrough video is attached to the
-[`demo-v0.1` release](https://github.com/Kaustubh-Rathi/adforge/releases).
+[`demo-v0.1` release](https://github.com/Kaustubh-Rathi/adforge/releases/tag/demo-v0.1).
 
 ---
 
@@ -85,6 +85,8 @@ executed on a real machine before being written down.
 git clone https://github.com/Kaustubh-Rathi/adforge.git
 cd adforge
 python -m venv .venv
+# Only needed if PowerShell blocks Activate.ps1; scoped to this shell.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev,dashboard]"
 cp .env.example .env
@@ -193,11 +195,11 @@ These are enforced by default; disabling them is refused outside dev/test.
 ## Development
 
 ```powershell
-.\\.venv\\Scripts\\ruff.exe check adforge tests          # lint
-.\\.venv\\Scripts\\ruff.exe format --check adforge tests
-.\\.venv\\Scripts\\mypy.exe adforge                       # strict
-.\\.venv\\Scripts\\python.exe -m pytest -m "not integration and not live"   # unit
-.\\.venv\\Scripts\\python.exe -m pytest -m "integration and not live"       # embedded Postgres
+.\.venv\Scripts\ruff.exe check adforge tests           # lint
+.\.venv\Scripts\ruff.exe format --check adforge tests
+.\.venv\Scripts\mypy.exe adforge                        # strict
+.\.venv\Scripts\python.exe -m pytest -m "not integration and not live"   # unit
+.\.venv\Scripts\python.exe -m pytest -m "integration and not live"       # embedded Postgres
 ```
 
 | Tier | Services | Count |
@@ -206,7 +208,8 @@ These are enforced by default; disabling them is refused outside dev/test.
 | Integration | `embedded-postgres`, no Docker needed | 44 |
 | Live | opt-in via `ADFORGE_LIVE_TESTS=1`; real LLM + ad APIs | opt-in |
 
-CI runs lint, both tiers on Python 3.11 and 3.12, with a 90% coverage gate
+CI runs lint and the unit tier on Python 3.11 and 3.12, and the integration
+tier on 3.11, all with a 90% coverage gate
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ### Add a new agent

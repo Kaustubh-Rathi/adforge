@@ -1,8 +1,8 @@
 # Running AdForge
 
 Every command here was executed on a real Windows 11 + Docker Desktop machine
-before being written down. Paths assume the repo is at `D:\AD`; substitute
-yours.
+before being written down. Paths below use `C:\path\to\adforge` as the checkout;
+substitute your own.
 
 `make` is **not** required. The `Makefile` is kept for Linux/CI, where `make`
 and a POSIX shell exist. On Windows use the PowerShell blocks below — the
@@ -14,10 +14,12 @@ Makefile recipes use `sleep` and `$(NAME)`, which do not work under
 ## 0. One-time setup
 
 ```powershell
-cd D:\AD
+cd C:\path\to\adforge
 
 # Python 3.11+ (3.14 also works) and Docker Desktop must already be installed.
 python -m venv .venv
+# Only needed if PowerShell blocks Activate.ps1; scoped to this shell.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 
 # Install the app + dev tools + dashboard extras.
@@ -75,7 +77,7 @@ You get one campaign per tenant, each with 30 days of `is_mock=true` KPI rows:
 Terminal 1:
 
 ```powershell
-cd D:\AD
+cd C:\path\to\adforge
 .\.venv\Scripts\python.exe -m uvicorn adforge.api.main:app `
   --host 127.0.0.1 --port 8000 --reload
 ```
@@ -98,7 +100,7 @@ Interactive API reference: <http://127.0.0.1:8000/docs>
 Terminal 2:
 
 ```powershell
-cd D:\AD
+cd C:\path\to\adforge
 .\.venv\Scripts\python.exe -m streamlit run adforge/dashboard/Overview.py `
   --server.port=8501
 ```

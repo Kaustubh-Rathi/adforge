@@ -1,0 +1,71 @@
+[
+  {
+    "id": "01-title",
+    "card": "title",
+    "lead": 1.4,
+    "narration": "This is AdForge: a multi-agent system that takes an advertising brief and runs it end to end. Seven specialist agents plan the campaign, a human approves it, and then it measures whether the money was worth spending."
+  },
+  {
+    "id": "02-overview",
+    "kind": "still",
+    "src": "docs/assets/dashboard-home.png",
+    "narration": "Here's the console. The home page shows live counts for the current tenant: campaigns, how many are waiting for review, how many are approved, and total platform spend. Below that, it draws the pipeline itself. Research, creative, media planning, compliance, then a human review gate, then K P I analytics, R O I, and optimization."
+  },
+  {
+    "id": "03-setup",
+    "card": "setup",
+    "narration": "Setup is six commands. Clone the repository, create a virtual environment, install the package with the dev and dashboard extras, and copy the example environment file. Then start Postgres and Redis with Docker Compose, and load three example campaigns. The seed is idempotent, so re-running it rewrites the same rows instead of duplicating them."
+  },
+  {
+    "id": "04-setup-run",
+    "card": "setup-run",
+    "narration": "Start the A P I with Uvicorn on port eight thousand, and the dashboard with Streamlit on port eight five zero one. That's it. There is no paid key in the default path: the language model runs on a free tier, and the research tools use free public data sources."
+  },
+  {
+    "id": "05-tour",
+    "kind": "still",
+    "src": "docs/assets/dashboard-campaigns.png",
+    "narration": "Five pages. Campaigns: write a brief and run the graph. Agent Traces: every agent run with its duration, token count and audit events. R O I Calculator: the verdict. And Review Queue: the human gate before anything launches."
+  },
+  {
+    "id": "06-create",
+    "kind": "clip",
+    "src": "capture/create.webm",
+    "narration": "Let me create one. I'm on the Campaigns page, in the demo tenant. I fill in the brief: the product, the audience, a budget, the objective, and the channels. This is a thirty-day, fifteen-thousand-dollar B two B launch."
+  },
+  {
+    "id": "07-run",
+    "kind": "clip",
+    "src": "capture/run.webm",
+    "badge": "live run · time-lapse",
+    "narration": "Now the interesting part. I trigger the run, and seven agents execute in sequence. This is time-lapsed. Research goes first. Here it took about seventy-five seconds, because the calls are real: Google Trends, Wikipedia, and a search chain that falls back to Bing when DuckDuckGo rate-limits. Then creative, media planning, and compliance. Watch the durations and token counts land in the trace table as each one finishes."
+  },
+  {
+    "id": "08-gate",
+    "kind": "clip",
+    "src": "capture/approve.webm",
+    "narration": "The graph now stops. It's paused at a human review interrupt, and the queue has it. I can read the creative concept, the media plan, and the compliance verdict, with its risk level and any flagged issues. Nothing launches without this step. I enter my reviewer email and click Approve. That mints a single-use, tenant-bound token and resumes the graph."
+  },
+  {
+    "id": "09-results",
+    "kind": "clip",
+    "src": "capture/results.webm",
+    "narration": "Three more agents run: KPI analytics, ROI calculation, and optimization. Then the verdict. This campaign returned 0.68 times on spend: a net loss of about 3600 dollars. Google is the biggest drag at 0.38; LinkedIn returns 1.22. The recommendation is to kill it and redesign. The arithmetic is recomputed from raw KPI rows, not from a platform-reported aggregate."
+  },
+  {
+    "id": "10-guardrails",
+    "card": "guardrails",
+    "narration": "What I care about most is underneath. Every agent input and output is a typed contract. Tenant isolation is threaded through every query, tool call and cache key. Rate limits are per tenant and per campaign. The audit log is append-only. Compliance can hard-block content, and there's a hard ceiling on language model calls per campaign."
+  },
+  {
+    "id": "11-honest",
+    "card": "honest",
+    "narration": "These are not optional in staging or production. And when a credential is missing, the system fails loudly. It never fabricates ad performance. What it is not: there's no chat interface, the demo K P Is are mock data and labelled as such, the compliance check is a first pass rather than a legal opinion, and tenant identity is a header, so it belongs behind your own authentication."
+  },
+  {
+    "id": "12-close",
+    "card": "close",
+    "lead": 0.6,
+    "narration": "The repository has the source, the setup guide, and an honest limits document. Everything you just saw ran locally, at zero A P I cost. Thanks for watching."
+  }
+]

@@ -21,6 +21,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 from sqlalchemy import text as sql_text
@@ -60,6 +61,32 @@ def _assert_reviewer_allowed(reviewer_email: str | None) -> None:
         )
 
 
+async def _assert_paused_at_gate(graph: Any, config: RunnableConfig) -> None:
+    """Refuse to resume unless a checkpoint is parked at ``human_review``.
+
+    A resume against a missing checkpoint does not fail: LangGraph simply
+    starts the graph over, re-running (and re-billing) research, creative and
+    media planning before pausing again. That would quietly ignore the human
+    decision, so treat it as a conflict instead.
+    """
+    try:
+        snapshot = await graph.aget_state(config)
+    except Exception as e:  # noqa: BLE001 — surface as a conflict, not a 500
+        raise HTTPException(
+            status_code=409,
+            detail=f"could not read this campaign's graph state: {e}",
+        ) from e
+    if "human_review" not in set(snapshot.next or ()):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "no paused human-review checkpoint for this campaign; the graph "
+                "state is missing (a restart while the checkpointer was not "
+                "durable does this). Re-run the campaign before reviewing it."
+            ),
+        )
+
+
 async def _resume_graph(
     campaign_id: UUID,
     reviewer_email: str | None,
@@ -69,6 +96,7 @@ async def _resume_graph(
     """Resume the paused graph and derive the campaign's next status."""
     graph = await get_compiled_graph()
     config = graph_config(campaign_id)
+    await _assert_paused_at_gate(graph, config)
     resume_payload = {
         "approved": approved,
         "reviewer_email": reviewer_email,

@@ -7,7 +7,9 @@ no external service is required.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from uuid import uuid4
 
 import httpx
@@ -490,23 +492,10 @@ class TestApiMain:
             ("close_redis", None),
         ]
 
-    @pytest.mark.parametrize(
-        ("app_env", "expected_reload"),
-        [("dev", True), ("test", False), ("prod", False)],
-    )
-    def test_run_passes_host_port_and_reload(self, monkeypatch, app_env, expected_reload):
+    def test_run_uses_reload_in_dev(self, monkeypatch):
         from adforge.api import main as api_main
 
-        env = {"APP_ENV": app_env, "API_HOST": "127.0.0.2", "API_PORT": "8123"}
-        if app_env in ("staging", "prod"):
-            env.update(
-                APP_SECRET="prod-secret",
-                APP_REVIEWER_ALLOWLIST="rev@example.com",
-                API_AUTH_TOKEN="prod-key",
-                CHECKPOINTER_BACKEND="postgres",
-                APP_CORS_ORIGINS="https://app.example.com",
-            )
-        _prepare_env(monkeypatch, **env)
+        _prepare_env(monkeypatch, APP_ENV="dev", API_HOST="127.0.0.2", API_PORT="8123")
         calls: list[tuple[tuple, dict]] = []
 
         def fake_run(*args, **kwargs) -> None:
@@ -521,7 +510,40 @@ class TestApiMain:
         assert args == ("adforge.api.main:app",)
         assert kwargs["host"] == "127.0.0.2"
         assert kwargs["port"] == 8123
-        assert kwargs["reload"] is expected_reload
+        assert kwargs["reload"] is True
+
+    def test_run_serves_with_an_explicit_loop_outside_dev(self, monkeypatch):
+        """``uvicorn.run`` would pick Proactor on Windows, which psycopg's
+        async driver refuses; the non-reload path must hand asyncio a loop."""
+        from adforge.api import main as api_main
+
+        _prepare_env(monkeypatch, APP_ENV="test", API_HOST="127.0.0.2", API_PORT="8123")
+        seen: dict[str, object] = {}
+
+        class FakeRunner:
+            def __init__(self, *, loop_factory=None):
+                seen["loop_factory"] = loop_factory
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def run(self, coro):
+                seen["served"] = coro
+                coro.close()
+
+        monkeypatch.setattr(api_main.asyncio, "Runner", FakeRunner)
+        monkeypatch.setattr(
+            api_main.uvicorn, "run", lambda *a, **k: pytest.fail("reload path used")
+        )
+
+        api_main.run()
+
+        expected = asyncio.SelectorEventLoop if sys.platform == "win32" else None
+        assert seen["loop_factory"] is expected
+        assert "served" in seen
 
 
 # --------------------------------------------------------------------------- #

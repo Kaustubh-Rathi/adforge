@@ -37,6 +37,9 @@ logs/
 *.mp4
 *.webm
 
+# Demo-video pipeline: sources are tracked, renders are not.
+scripts/demo_video/out/
+
 # Credentials
 creds/*.json
 creds/*.pem

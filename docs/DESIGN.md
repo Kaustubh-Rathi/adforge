@@ -327,7 +327,7 @@ stateDiagram-v2
     TokenIssued --> TokenUsed : Orchestrator calls<br/>publish_campaign with token
     TokenIssued --> TokenExpired : TTL (1h) elapsed
 
-    TokenUsed --> [*] : Tool executes<br/>(TODO v0.4: blacklist in Redis<br/>to enforce single-use)
+    TokenUsed --> [*] : Tool executes<br/>(jti atomically consumed in Redis,<br/>so replay is rejected)
     TokenExpired --> [*] : Subsequent calls blocked
 
     note right of TokenIssued

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AdForge cards</title>
+<style>
+  @font-face { font-family: 'AF'; src: local('Segoe UI'); }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 1600px; height: 900px; overflow: hidden;
+    background: #F7F8FA; color: #12181F;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .frame {
+    position: absolute; inset: 0; padding: 96px 120px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .kicker {
+    font-family: 'Cascadia Mono', Consolas, monospace;
+    font-size: 17px; letter-spacing: .16em; text-transform: uppercase;
+    color: #5B6B7C; margin-bottom: 26px;
+  }
+  .kicker .dot { color: #176B4F; }
+  h1 { font-size: 96px; line-height: 1.02; margin: 0 0 24px; letter-spacing: -.03em; font-weight: 700; }
+  h1 .accent { color: #176B4F; }
+  h2 { font-size: 58px; line-height: 1.1; margin: 0 0 18px; letter-spacing: -.02em; }
+  .sub { font-size: 30px; line-height: 1.45; color: #33404F; max-width: 1180px; }
+  .rule { width: 92px; height: 5px; background: #176B4F; margin: 0 0 30px; }
+
+  /* terminal card */
+  .term {
+    background: #0E1116; border-radius: 14px; padding: 34px 40px;
+    font-family: 'Cascadia Mono', Consolas, monospace;
+    font-size: 25px; line-height: 1.85; color: #D7DEE7;
+    box-shadow: 0 24px 60px rgba(15, 26, 36, .22);
+  }
+  .term .c { color: #5FB894; user-select: none; }
+  .term .p { color: #6E8095; }
+  .term .n { color: #E8B45A; }
+  .term .ok { color: #7BCFA6; }
+  .term + .term { margin-top: 22px; }
+
+  /* list card */
+  ul.grid { list-style: none; margin: 8px 0 0; padding: 0;
+           display: grid; grid-template-columns: 1fr 1fr; gap: 26px 44px; }
+  ul.grid li { position: relative; padding-left: 40px; font-size: 27px; line-height: 1.4; color: #26323F; }
+  ul.grid li b { color: #12181F; display: block; font-size: 27px; }
+  ul.grid li span { color: #5B6B7C; font-size: 22px; }
+  ul.grid li::before {
+    content: ''; position: absolute; left: 0; top: 11px;
+    width: 14px; height: 14px; background: #176B4F; border-radius: 2px;
+  }
+  ul.grid.bad li::before { background: #B3402F; }
+
+  .badge {
+    display: inline-block; padding: 10px 20px; border: 1px solid #C9D3DD;
+    border-radius: 999px; font-size: 20px; color: #33404F; background: #fff;
+    letter-spacing: .04em;
+  }
+  .url { font-family: 'Cascadia Mono', Consolas, monospace; font-size: 28px; color: #176B4F; }
+</style>
+</head>
+<body>
+<div class="frame" id="card"></div>
+<script>
+const CARDS = {
+  title: () => `
+    <div class="kicker"><span class="dot">&#9679;</span>&nbsp; multi-agent ad campaign platform</div>
+    <h1>AdForge</h1>
+    <div class="rule"></div>
+    <div class="sub">Seven specialist agents take an advertising brief from research to a measured
+    ROI verdict &mdash; with a human approval gate in the middle and an append-only audit log
+    underneath.</div>
+  `,
+
+  setup: () => `
+    <div class="kicker"><span class="dot">&#9679;</span>&nbsp; setup</div>
+    <h2>Clone, install, start</h2>
+    <div class="term">
+<div><span class="p">$</span> git clone https://github.com/Kaustubh-Rathi/adforge.git</div>
+<div><span class="p">$</span> python -m venv .venv</div>
+<div><span class="p">$</span> pip install -e ".[dev,dashboard]"</div>
+<div><span class="p">$</span> cp .env.example .env&nbsp;&nbsp;<span class="c"># set APP_SECRET + LLM_API_KEY</span></div>
+    </div>
+    <div class="term" style="margin-top:26px">
+<div><span class="p">$</span> docker compose up -d postgres redis</div>
+<div><span class="p">$</span> python -m adforge.storage.seed&nbsp;&nbsp;<span class="c"># idempotent</span></div>
+<div><span class="ok">seeded tenant_acme_saas, tenant_bloom_bistro, tenant_vertex_audio</span></div>
+    </div>
+  `,
+
+  'setup-run': () => `
+    <div class="kicker"><span class="dot">&#9679;</span>&nbsp; setup</div>
+    <h2>Two processes</h2>
+    <div class="term">
+<div><span class="c"># terminal 1 &mdash; API</span></div>
+<div><span class="p">$</span> python -m uvicorn adforge.api.main:app --port 8000 --reload</div>
+<div style="margin-top:18px"><span class="c"># terminal 2 &mdash; dashboard</span></div>
+<div><span class="p">$</span> python -m streamlit run adforge/dashboard/Overview.py --server.port=8501</div>
+<div style="margin-top:18px"><span class="ok">INFO:&nbsp;&nbsp;Uvicorn running on http://127.0.0.1:8000</span></div>
+    </div>
+    <div class="sub" style="margin-top:34px">Zero paid keys on the default path. The LLM is a free tier;
+    research runs on free public data sources.</div>
+  `,
+
+  guardrails: () => `
+    <div class="kicker"><span class="dot">&#9679;</span>&nbsp; guardrails</div>
+    <h2>Six things agents cannot get around</h2>
+    <ul class="grid">
+      <li><b>Typed contracts</b><span>every input and output validated</span></li>
+      <li><b>Tenant isolation</b><span>in every query, tool call and cache key</span></li>
+      <li><b>Rate limits</b><span>per tenant and per campaign, in Redis</span></li>
+      <li><b>Append-only audit log</b><span>no UPDATE path exists</span></li>
+      <li><b>Compliance gate</b><span>hard blocks; no publish without a verdict</span></li>
+      <li><b>Cost ceiling</b><span>LLM calls bounded per campaign</span></li>
+    </ul>
+  `,
+
+  honest: () => `
+    <div class="kicker"><span class="dot">&#9679;</span>&nbsp; honest limits</div>
+    <h2>What it is not</h2>
+    <ul class="grid bad">
+      <li><b>No chat interface</b><span>dashboard or REST API only</span></li>
+      <li><b>No ad-platform keys included</b><span>demo KPIs are mock, and labelled</span></li>
+      <li><b>Not a legal opinion</b><span>compliance is a first pass</span></li>
+      <li><b>Not public-facing</b><span>tenant is a header &mdash; put auth in front</span></li>
+      <li><b>Not self-serve</b><span>an operator tool: Python, Docker, .env</span></li>
+      <li><b>No fabricated results</b><span>missing credentials fail loudly</span></li>
+    </ul>
+  `,
+
+  close: () => `
+    <div class="kicker"><span class="dot">&#9679;</span>&nbsp; adforge</div>
+    <h1 style="font-size:72px">Source, setup guide,<br/>and honest limits.</h1>
+    <div class="rule"></div>
+    <div class="url">github.com/Kaustubh-Rathi/adforge</div>
+    <div class="sub" style="margin-top:26px">Seven agents &middot; 697 tests &middot; MIT licence.
+    Everything in this video ran locally at zero API cost.</div>
+  `,
+};
+
+const params = new URLSearchParams(location.search);
+const name = params.get('card') || 'title';
+document.getElementById('card').innerHTML = (CARDS[name] || CARDS.title)();
+document.body.dataset.rendered = '1';
+</script>
+</body>
+</html>

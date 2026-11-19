@@ -496,4 +496,4 @@ The base AdForge remains MIT-licensed open-source. The GobbleCube extensions can
 
 The 8-week timeline assumes 4 engineers working full-time. The biggest risk is the quick-commerce scraping (no public APIs) — if that proves infeasible, weeks 3-4 slip by 2 weeks and we ship without Gobbs Flow's full functionality.
 
-See `docs/DESIGN.md` for the system architecture (with mermaid diagrams) and `docs/HONEST_AUDIT.md` for what's currently in v0.3 vs what's still TODO.
+See `docs/DESIGN.md` for the system architecture (with mermaid diagrams) and `docs/HONEST_AUDIT.md` for what is implemented today versus what is still proposed.
