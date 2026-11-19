@@ -1,4 +1,5 @@
 """Unit tests for the FastAPI surface (no DB) and the LangGraph wiring."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -23,9 +24,7 @@ async def bare_client():
     from adforge.api.main import app
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://adforge.test"
-    ) as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://adforge.test") as client:
         yield client
 
 
@@ -40,9 +39,7 @@ class TestApiMetadata:
         assert r.status_code == 200
         data = r.json()
         assert isinstance(data["agents"], list)
-        assert {"research", "roi_calculator", "compliance"}.issubset(
-            set(data["agents"])
-        )
+        assert {"research", "roi_calculator", "compliance"}.issubset(set(data["agents"]))
 
     async def test_campaigns_require_tenant_header(self, bare_client):
         r = await bare_client.get("/campaigns")
@@ -95,12 +92,16 @@ class TestGraphTopology:
         assert graph_state.thread_id_for(cid) == graph_state.thread_id_for(str(cid))
 
     def test_route_after_compliance_always_human_review(self):
-        assert graph_state.route_after_compliance(
-            {"compliance_verdict": {"approved": True}}
-        ) == "human_review"
-        assert graph_state.route_after_compliance(
-            {"compliance_verdict": {"approved": False, "risk_level": "critical"}}
-        ) == "human_review"
+        assert (
+            graph_state.route_after_compliance({"compliance_verdict": {"approved": True}})
+            == "human_review"
+        )
+        assert (
+            graph_state.route_after_compliance(
+                {"compliance_verdict": {"approved": False, "risk_level": "critical"}}
+            )
+            == "human_review"
+        )
 
     @pytest.mark.parametrize(
         "state,expected",
@@ -242,9 +243,7 @@ class TestGraphNodes:
         assert (await graph_state.roi_calculator_node(_state()))["errors"] == [
             "roi_calculator: down"
         ]
-        assert (await graph_state.optimization_node(_state()))["errors"] == [
-            "optimization: down"
-        ]
+        assert (await graph_state.optimization_node(_state()))["errors"] == ["optimization: down"]
 
 
 class TestHumanReviewNode:
@@ -310,9 +309,7 @@ class TestHumanReviewNode:
         assert out["reviewer_comments"] == "too salesy"
 
     async def test_reject_without_comment_uses_default(self, monkeypatch):
-        monkeypatch.setattr(
-            graph_state, "interrupt", lambda packet: {"approved": False}
-        )
+        monkeypatch.setattr(graph_state, "interrupt", lambda packet: {"approved": False})
         out = await graph_state.human_review_node(
             _state(compliance_verdict={"approved": True, "risk_level": "low"})
         )
@@ -354,15 +351,11 @@ class TestCheckpointer:
 
     def test_checkpointer_conninfo_prefers_ipv4_loopback(self):
         assert (
-            graph_state._checkpointer_conninfo(
-                "postgresql+asyncpg://u:p@localhost:5432/db"
-            )
+            graph_state._checkpointer_conninfo("postgresql+asyncpg://u:p@localhost:5432/db")
             == "postgresql://u:p@127.0.0.1:5432/db"
         )
         assert (
-            graph_state._checkpointer_conninfo(
-                "postgresql+asyncpg://u:p@db.internal:5432/db"
-            )
+            graph_state._checkpointer_conninfo("postgresql+asyncpg://u:p@db.internal:5432/db")
             == "postgresql://u:p@db.internal:5432/db"
         )
 
@@ -391,9 +384,7 @@ class TestCheckpointer:
             async def setup(self):
                 captured["setup"] = True
 
-        monkeypatch.setenv(
-            "DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/db"
-        )
+        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/db")
         monkeypatch.setenv("CHECKPOINTER_BACKEND", "postgres")
         get_settings.cache_clear()
         monkeypatch.setattr(psycopg_pool, "AsyncConnectionPool", FakePool)
@@ -486,9 +477,7 @@ class TestGraphEndToEndUnit:
         monkeypatch.setattr(kpi_agent_module, "fetch_channel_snapshots", fake_fetch)
         monkeypatch.setattr(kpi_agent_module, "persist_snapshots", fake_persist)
 
-    async def test_full_graph_skips_hitl_when_not_required(
-        self, graph_llm, monkeypatch
-    ):
+    async def test_full_graph_skips_hitl_when_not_required(self, graph_llm, monkeypatch):
         from adforge.config import get_settings
 
         monkeypatch.setenv("GUARDRAILS_REQUIRE_COMPLIANCE_APPROVAL", "false")

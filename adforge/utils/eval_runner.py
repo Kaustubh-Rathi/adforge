@@ -13,6 +13,7 @@ The runner always uses the configured live LLM and real ad-platform reporting
 APIs. There is no simulated-data mode: missing credentials surface as eval
 failures so an operator knows exactly what is unconfigured.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -79,12 +80,8 @@ def check_roi_metrics(report: dict[str, Any]) -> list[str]:
     """Recompute ROI totals/ratios from the raw spend + revenue."""
     roi = RoiReport(**report)
     failures: list[str] = []
-    expected_roas = (
-        roi.total_revenue_usd / roi.total_spend_usd if roi.total_spend_usd else 0.0
-    )
-    expected_cpa = (
-        roi.total_spend_usd / roi.total_conversions if roi.total_conversions else 0.0
-    )
+    expected_roas = roi.total_revenue_usd / roi.total_spend_usd if roi.total_spend_usd else 0.0
+    expected_cpa = roi.total_spend_usd / roi.total_conversions if roi.total_conversions else 0.0
     expected_profit = roi.total_revenue_usd - roi.total_spend_usd
     if not _close(roi.blended_roas, expected_roas, 0.02):
         failures.append(f"blended_roas {roi.blended_roas} != {expected_roas:.2f}")
@@ -106,10 +103,7 @@ async def run_eval(
     include_graph: bool = True,
 ) -> int:
     """Run all agents on the sample brief. Returns 0 on success, 1 on failure."""
-    print(
-        "Running agent eval "
-        f"(provider={'injected' if provider is not None else 'configured'})\n"
-    )
+    print(f"Running agent eval (provider={'injected' if provider is not None else 'configured'})\n")
 
     brief = CampaignBrief(**SAMPLE_BRIEF)
     campaign_id = uuid4()
@@ -123,42 +117,65 @@ async def run_eval(
     kpi = KpiAnalyticsAgent()
     roi = RoiCalculatorAgent(llm=provider)
 
-    async def run_agent(name, agent, upstream):
+    async def run_agent(name: str, agent: Any, upstream: dict[str, Any]) -> dict[str, Any]:
         print(f"  -> {name}...", end=" ")
-        result = await agent.run({
-            "request_id": str(uuid4()),
-            "tenant_id": "eval_tenant",
-            "campaign_id": str(campaign_id),
-            "agent_name": name,
-            "brief": brief.model_dump(),
-            "upstream_payloads": upstream,
-        })
+        result = await agent.run(
+            {
+                "request_id": str(uuid4()),
+                "tenant_id": "eval_tenant",
+                "campaign_id": str(campaign_id),
+                "agent_name": name,
+                "brief": brief.model_dump(),
+                "upstream_payloads": upstream,
+            }
+        )
         if result.output.error:
             print(f"FAIL: {result.output.error}")
             failures.append(f"{name}: {result.output.error}")
             return {}
         print(f"OK ({len(result.output.payload)} payload keys)")
-        return result.output.payload
+        payload: dict[str, Any] = result.output.payload
+        return payload
 
     research_payload = await run_agent("research", research, {})
-    creative_payload = await run_agent("creative_strategist", creative, {
-        "research": research_payload,
-    })
-    media_payload = await run_agent("media_planner", media_planner, {
-        "research": research_payload,
-        "creative": creative_payload,
-    })
-    compliance_payload = await run_agent("compliance", compliance, {
-        "creative": creative_payload,
-        "media_plan": media_payload,
-    })
-    kpi_payload = await run_agent("kpi_analytics", kpi, {
-        "media_plan": media_payload,
-    })
-    roi_payload = await run_agent("roi_calculator", roi, {
-        "kpi_analytics": kpi_payload,
-        "media_plan": media_payload,
-    })
+    creative_payload = await run_agent(
+        "creative_strategist",
+        creative,
+        {
+            "research": research_payload,
+        },
+    )
+    media_payload = await run_agent(
+        "media_planner",
+        media_planner,
+        {
+            "research": research_payload,
+            "creative": creative_payload,
+        },
+    )
+    compliance_payload = await run_agent(
+        "compliance",
+        compliance,
+        {
+            "creative": creative_payload,
+            "media_plan": media_payload,
+        },
+    )
+    kpi_payload = await run_agent(
+        "kpi_analytics",
+        kpi,
+        {
+            "media_plan": media_payload,
+        },
+    )
+    roi_payload = await run_agent(
+        "roi_calculator",
+        roi,
+        {
+            "kpi_analytics": kpi_payload,
+            "media_plan": media_payload,
+        },
+    )
 
     # Guard the numbers the agents reported.
     for failure in check_kpi_metrics(kpi_payload.get("snapshots", [])):
@@ -217,7 +234,7 @@ async def _run_graph_eval(provider: LLMProvider | None) -> list[str]:
 
         campaign_id = uuid4()
         compiled = graph_state.build_graph().compile(checkpointer=MemorySaver())
-        config = {"configurable": {"thread_id": graph_state.thread_id_for(campaign_id)}}
+        config = graph_state.graph_config(campaign_id)
         final = await compiled.ainvoke(
             {
                 "request_id": str(uuid4()),

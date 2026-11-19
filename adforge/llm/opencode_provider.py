@@ -269,13 +269,8 @@ class OpencodeProvider(LLMProvider):
             # The free endpoint rejects requests that do not include a tool
             # named "read". Keep the gate first, then expose the caller's real
             # (read-only) tools so the model can actually use them.
-            names = {
-                str((tool.get("function") or {}).get("name", ""))
-                for tool in caller_tools
-            }
-            payload["tools"] = (
-                [] if "read" in names else [dict(_READ_GATE_TOOL)]
-            ) + caller_tools
+            names = {str((tool.get("function") or {}).get("name", "")) for tool in caller_tools}
+            payload["tools"] = ([] if "read" in names else [dict(_READ_GATE_TOOL)]) + caller_tools
         elif caller_tools:
             payload["tools"] = caller_tools
         return payload
@@ -285,9 +280,7 @@ class OpencodeProvider(LLMProvider):
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _accumulate_tool_calls(
-        state: dict[str, Any], raw_calls: Any
-    ) -> None:
+    def _accumulate_tool_calls(state: dict[str, Any], raw_calls: Any) -> None:
         """Merge streaming tool-call fragments into ``state['tool_calls']``."""
         if not isinstance(raw_calls, list):
             return
@@ -300,9 +293,7 @@ class OpencodeProvider(LLMProvider):
                 index = int(index)
             except (TypeError, ValueError):
                 index = position
-            entry = accumulated.setdefault(
-                index, {"id": "", "name": "", "arguments": ""}
-            )
+            entry = accumulated.setdefault(index, {"id": "", "name": "", "arguments": ""})
             call_id = raw.get("id")
             if call_id:
                 entry["id"] = str(call_id)
@@ -344,9 +335,7 @@ class OpencodeProvider(LLMProvider):
         if isinstance(delta, dict):
             state["content"].append(_text_content(delta.get("content")))
             if "tool_calls" in delta:
-                OpencodeProvider._accumulate_tool_calls(
-                    state, delta.get("tool_calls")
-                )
+                OpencodeProvider._accumulate_tool_calls(state, delta.get("tool_calls"))
         if choice.get("finish_reason"):
             state["finish_reason"] = str(choice["finish_reason"])
 
@@ -410,26 +399,24 @@ class OpencodeProvider(LLMProvider):
             raw_arguments = entry.get("arguments") or "{}"
             try:
                 arguments = (
-                    json.loads(raw_arguments)
-                    if isinstance(raw_arguments, str)
-                    else raw_arguments
+                    json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
                 )
             except (TypeError, ValueError):
                 arguments = {"_raw_arguments": str(raw_arguments)}
             if not isinstance(arguments, dict):
                 arguments = {"value": arguments}
             call_id = str(entry.get("id") or f"call_{index}")
-            tool_calls.append(
-                ToolCall(id=call_id, name=name, arguments=arguments)
+            tool_calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
+            raw_tool_calls.append(
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(arguments),
+                    },
+                }
             )
-            raw_tool_calls.append({
-                "id": call_id,
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": json.dumps(arguments),
-                },
-            })
 
         finish_reason = str(state.get("finish_reason", "stop"))
         if tool_calls and finish_reason in ("stop", "length", ""):

@@ -29,6 +29,7 @@ External MCP repos referenced (see docs/RESEARCH.md):
     - SimilarWeb skill via Composio Rube MCP
     - nickclyde/duckduckgo-mcp-server (DuckDuckGo search pattern)
 """
+
 from __future__ import annotations
 
 import json
@@ -60,14 +61,14 @@ async def similarweb_traffic(domain: str, headers: dict[str, str] | None = None)
     _check_tenant(headers)
     s = get_settings()
     if not s.similarweb_api_key:
-        return json.dumps({
-            "domain": domain,
-            "error": "similarweb_not_configured",
-            "detail": "Set SIMILARWEB_API_KEY to enable traffic data.",
-        })
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+        return json.dumps(
+            {
+                "domain": domain,
+                "error": "similarweb_not_configured",
+                "detail": "Set SIMILARWEB_API_KEY to enable traffic data.",
+            }
+        )
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.get(
             f"{s.similarweb_api_base.rstrip('/')}/v1/website/{domain}"
             "/total-traffic-and-engagement/visits",
@@ -82,16 +83,16 @@ async def similarweb_traffic(domain: str, headers: dict[str, str] | None = None)
 
 @mcp.tool(annotations=READ_ONLY)
 @readonly
-async def appstore_search(query: str, country: str = "us", headers: dict[str, str] | None = None) -> str:
+async def appstore_search(
+    query: str, country: str = "us", headers: dict[str, str] | None = None
+) -> str:
     """Search the Apple App Store. Mirrors meyusufdemirci/app-store-operator.
 
     Uses Apple's public search endpoint — no API key required.
     """
     _check_tenant(headers)
     s = get_settings()
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.get(
             f"{s.itunes_api_base.rstrip('/')}/search",
             params={"term": query, "country": country, "media": "software", "limit": 10},
@@ -117,13 +118,13 @@ async def appstore_search(query: str, country: str = "us", headers: dict[str, st
 
 @mcp.tool(annotations=READ_ONLY)
 @readonly
-async def appstore_reviews(app_id: int, country: str = "us", limit: int = 20, headers: dict[str, str] | None = None) -> str:
+async def appstore_reviews(
+    app_id: int, country: str = "us", limit: int = 20, headers: dict[str, str] | None = None
+) -> str:
     """Fetch recent App Store reviews for an app. Public RSS endpoint."""
     _check_tenant(headers)
     s = get_settings()
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.get(
             f"{s.itunes_api_base.rstrip('/')}/{country}/rss/customerreviews"
             f"/id={app_id}/sort=mostrecent/json",
@@ -134,15 +135,19 @@ async def appstore_reviews(app_id: int, country: str = "us", limit: int = 20, he
     entries = data.get("feed", {}).get("entry", [])
     # First entry is the app metadata, skip it.
     reviews = []
-    for entry in entries[1:limit + 1]:
-        reviews.append({
-            "rating": int(entry.get("im:rating", {}).get("label", 0)),
-            "title": entry.get("title", {}).get("label", ""),
-            "content": entry.get("content", {}).get("label", "")[:500],
-            "author": entry.get("author", {}).get("name", {}).get("label", ""),
-            "version": entry.get("im:version", {}).get("label", ""),
-        })
-    return json.dumps({"app_id": app_id, "country": country, "reviews": reviews, "count": len(reviews)})
+    for entry in entries[1 : limit + 1]:
+        reviews.append(
+            {
+                "rating": int(entry.get("im:rating", {}).get("label", 0)),
+                "title": entry.get("title", {}).get("label", ""),
+                "content": entry.get("content", {}).get("label", "")[:500],
+                "author": entry.get("author", {}).get("name", {}).get("label", ""),
+                "version": entry.get("im:version", {}).get("label", ""),
+            }
+        )
+    return json.dumps(
+        {"app_id": app_id, "country": country, "reviews": reviews, "count": len(reviews)}
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -154,22 +159,22 @@ async def ipinfo_lookup(ip: str, headers: dict[str, str] | None = None) -> str:
     token = s.ipinfo_api_token
     url = f"{s.ipinfo_api_base.rstrip('/')}/{ip}/json"
     params = {"token": token} if token else {}
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.get(url, params=params)
         if resp.status_code != 200:
             return json.dumps({"error": f"ipinfo API {resp.status_code}"})
         data = resp.json()
-    return json.dumps({
-        "ip": ip,
-        "city": data.get("city"),
-        "region": data.get("region"),
-        "country": data.get("country"),
-        "org": data.get("org"),  # e.g. "AS15169 Google LLC"
-        "hostname": data.get("hostname"),
-        "loc": data.get("loc"),  # "lat,lng"
-    })
+    return json.dumps(
+        {
+            "ip": ip,
+            "city": data.get("city"),
+            "region": data.get("region"),
+            "country": data.get("country"),
+            "org": data.get("org"),  # e.g. "AS15169 Google LLC"
+            "hostname": data.get("hostname"),
+            "loc": data.get("loc"),  # "lat,lng"
+        }
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -179,14 +184,14 @@ async def abuseipdb_check(ip: str, headers: dict[str, str] | None = None) -> str
     _check_tenant(headers)
     s = get_settings()
     if not s.abuseipdb_api_key:
-        return json.dumps({
-            "ip": ip,
-            "error": "abuseipdb_not_configured",
-            "detail": "Set ABUSEIPDB_API_KEY to enable IP reputation checks.",
-        })
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+        return json.dumps(
+            {
+                "ip": ip,
+                "error": "abuseipdb_not_configured",
+                "detail": "Set ABUSEIPDB_API_KEY to enable IP reputation checks.",
+            }
+        )
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.get(
             f"{s.abuseipdb_api_base.rstrip('/')}/check",
             headers={"Key": s.abuseipdb_api_key, "Accept": "application/json"},
@@ -195,15 +200,17 @@ async def abuseipdb_check(ip: str, headers: dict[str, str] | None = None) -> str
         if resp.status_code != 200:
             return json.dumps({"error": f"AbuseIPDB {resp.status_code}"})
         data = resp.json().get("data", {})
-    return json.dumps({
-        "ip": ip,
-        "abuse_confidence_score": data.get("abuseConfidenceScore", 0),
-        "total_reports": data.get("totalReports", 0),
-        "country": data.get("countryCode"),
-        "usage_type": data.get("usageType"),
-        "isp": data.get("isp"),
-        "domain": data.get("domain"),
-    })
+    return json.dumps(
+        {
+            "ip": ip,
+            "abuse_confidence_score": data.get("abuseConfidenceScore", 0),
+            "total_reports": data.get("totalReports", 0),
+            "country": data.get("countryCode"),
+            "usage_type": data.get("usageType"),
+            "isp": data.get("isp"),
+            "domain": data.get("domain"),
+        }
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -228,16 +235,18 @@ async def github_repo_stats(repo: str, headers: dict[str, str] | None = None) ->
         if resp.status_code != 200:
             return json.dumps({"error": f"GitHub API {resp.status_code}: {resp.text[:200]}"})
         data = resp.json()
-    return json.dumps({
-        "repo": repo,
-        "stars": data.get("stargazers_count"),
-        "forks": data.get("forks_count"),
-        "open_issues": data.get("open_issues_count"),
-        "language": data.get("language"),
-        "license": data.get("license", {}).get("name") if data.get("license") else None,
-        "last_push": data.get("pushed_at"),
-        "description": data.get("description"),
-    })
+    return json.dumps(
+        {
+            "repo": repo,
+            "stars": data.get("stargazers_count"),
+            "forks": data.get("forks_count"),
+            "open_issues": data.get("open_issues_count"),
+            "language": data.get("language"),
+            "license": data.get("license", {}).get("name") if data.get("license") else None,
+            "last_push": data.get("pushed_at"),
+            "description": data.get("description"),
+        }
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -260,12 +269,8 @@ async def hackernews_top(
     if story_type not in ("top", "new", "best", "ask", "show", "job"):
         return json.dumps({"error": "story_type must be one of: top, new, best, ask, show, job"})
 
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
-        ids_resp = await client.get(
-            f"{s.hackernews_api_base.rstrip('/')}/{story_type}stories.json"
-        )
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
+        ids_resp = await client.get(f"{s.hackernews_api_base.rstrip('/')}/{story_type}stories.json")
         if ids_resp.status_code != 200:
             return json.dumps({"error": f"HN API {ids_resp.status_code}"})
         ids = ids_resp.json()[:n]
@@ -278,27 +283,36 @@ async def hackernews_top(
             if story_resp.status_code == 200:
                 s_data = story_resp.json()
                 if s_data:
-                    stories.append({
-                        "id": s_data.get("id"),
-                        "title": s_data.get("title"),
-                        "url": s_data.get("url", f"https://news.ycombinator.com/item?id={story_id}"),
-                        "score": s_data.get("score", 0),
-                        "comments": s_data.get("descendants", 0),
-                        "by": s_data.get("by"),
-                        "time": s_data.get("time"),
-                    })
-        return json.dumps({
-            "story_type": story_type,
-            "stories": stories,
-            "count": len(stories),
-        })
+                    stories.append(
+                        {
+                            "id": s_data.get("id"),
+                            "title": s_data.get("title"),
+                            "url": s_data.get(
+                                "url", f"https://news.ycombinator.com/item?id={story_id}"
+                            ),
+                            "score": s_data.get("score", 0),
+                            "comments": s_data.get("descendants", 0),
+                            "by": s_data.get("by"),
+                            "time": s_data.get("time"),
+                        }
+                    )
+        return json.dumps(
+            {
+                "story_type": story_type,
+                "stories": stories,
+                "count": len(stories),
+            }
+        )
 
 
 @mcp.tool(annotations=READ_ONLY)
 @readonly
 async def reddit_search(
-    query: str, subreddit: str = "all", n: int = 10,
-    sort: str = "relevance", headers: dict[str, str] | None = None,
+    query: str,
+    subreddit: str = "all",
+    n: int = 10,
+    sort: str = "relevance",
+    headers: dict[str, str] | None = None,
 ) -> str:
     """Search Reddit via the public JSON API. No auth required (read-only).
 
@@ -318,7 +332,9 @@ async def reddit_search(
         resp = await client.get(
             f"{s.reddit_api_base.rstrip('/')}/r/{subreddit}/search.json",
             params={
-                "q": query, "sort": sort, "limit": n,
+                "q": query,
+                "sort": sort,
+                "limit": n,
                 "restrict_sr": "true" if subreddit != "all" else "false",
                 "t": "year",
             },
@@ -330,28 +346,37 @@ async def reddit_search(
     posts = []
     for child in data.get("data", {}).get("children", []):
         p = child.get("data", {})
-        posts.append({
-            "title": p.get("title"),
-            "url": p.get("url"),
-            "permalink": f"https://reddit.com{p.get('permalink', '')}",
-            "subreddit": p.get("subreddit"),
-            "score": p.get("score", 0),
-            "comments": p.get("num_comments", 0),
-            "upvote_ratio": p.get("upvote_ratio"),
-            "author": p.get("author"),
-            "created_utc": p.get("created_utc"),
-            "selftext": (p.get("selftext", "") or "")[:500],
-        })
-    return json.dumps({
-        "query": query, "subreddit": subreddit, "sort": sort,
-        "posts": posts, "count": len(posts),
-    })
+        posts.append(
+            {
+                "title": p.get("title"),
+                "url": p.get("url"),
+                "permalink": f"https://reddit.com{p.get('permalink', '')}",
+                "subreddit": p.get("subreddit"),
+                "score": p.get("score", 0),
+                "comments": p.get("num_comments", 0),
+                "upvote_ratio": p.get("upvote_ratio"),
+                "author": p.get("author"),
+                "created_utc": p.get("created_utc"),
+                "selftext": (p.get("selftext", "") or "")[:500],
+            }
+        )
+    return json.dumps(
+        {
+            "query": query,
+            "subreddit": subreddit,
+            "sort": sort,
+            "posts": posts,
+            "count": len(posts),
+        }
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
 @readonly
 async def stackexchange_search(
-    query: str, site: str = "stackoverflow", n: int = 10,
+    query: str,
+    site: str = "stackoverflow",
+    n: int = 10,
     headers: dict[str, str] | None = None,
 ) -> str:
     """Search the Stack Exchange network. No auth required.
@@ -362,14 +387,15 @@ async def stackexchange_search(
     """
     _check_tenant(headers)
     s = get_settings()
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.get(
             f"{s.stackexchange_api_base.rstrip('/')}/search",
             params={
-                "order": "desc", "sort": "relevance",
-                "intitle": query, "site": site, "pagesize": n,
+                "order": "desc",
+                "sort": "relevance",
+                "intitle": query,
+                "site": site,
+                "pagesize": n,
             },
         )
         if resp.status_code != 200:
@@ -378,26 +404,31 @@ async def stackexchange_search(
 
     items = []
     for item in data.get("items", [])[:n]:
-        items.append({
-            "title": item.get("title"),
-            "link": item.get("link"),
-            "score": item.get("score", 0),
-            "answers": item.get("answer_count", 0),
-            "is_answered": item.get("is_answered"),
-            "tags": item.get("tags", []),
-            "view_count": item.get("view_count", 0),
-            "creation_date": item.get("creation_date"),
-        })
-    return json.dumps({
-        "query": query, "site": site, "items": items, "count": len(items),
-    })
+        items.append(
+            {
+                "title": item.get("title"),
+                "link": item.get("link"),
+                "score": item.get("score", 0),
+                "answers": item.get("answer_count", 0),
+                "is_answered": item.get("is_answered"),
+                "tags": item.get("tags", []),
+                "view_count": item.get("view_count", 0),
+                "creation_date": item.get("creation_date"),
+            }
+        )
+    return json.dumps(
+        {
+            "query": query,
+            "site": site,
+            "items": items,
+            "count": len(items),
+        }
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
 @readonly
-async def producthunt_search(
-    query: str, n: int = 10, headers: dict[str, str] | None = None
-) -> str:
+async def producthunt_search(query: str, n: int = 10, headers: dict[str, str] | None = None) -> str:
     """Search Product Hunt via the official GraphQL API.
 
     Requires ``PRODUCTHUNT_API_TOKEN``; without it the tool returns an explicit
@@ -406,11 +437,13 @@ async def producthunt_search(
     _check_tenant(headers)
     s = get_settings()
     if not s.producthunt_api_token:
-        return json.dumps({
-            "query": query,
-            "error": "producthunt_not_configured",
-            "detail": "Set PRODUCTHUNT_API_TOKEN to enable Product Hunt search.",
-        })
+        return json.dumps(
+            {
+                "query": query,
+                "error": "producthunt_not_configured",
+                "detail": "Set PRODUCTHUNT_API_TOKEN to enable Product Hunt search.",
+            }
+        )
 
     graphql = """
         query SearchPosts($query: String!, $first: Int!) {
@@ -429,9 +462,7 @@ async def producthunt_search(
           }
         }
     """
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.post(
             s.producthunt_api_url,
             headers={
@@ -442,9 +473,7 @@ async def producthunt_search(
             json={"query": graphql, "variables": {"query": query, "first": n}},
         )
         if resp.status_code != 200:
-            return json.dumps({
-                "error": f"Product Hunt API {resp.status_code}: {resp.text[:200]}"
-            })
+            return json.dumps({"error": f"Product Hunt API {resp.status_code}: {resp.text[:200]}"})
         body = resp.json()
 
     errors = body.get("errors")
@@ -454,21 +483,25 @@ async def producthunt_search(
     hits = []
     for edge in edges[:n]:
         node = edge.get("node") or {}
-        hits.append({
-            "id": node.get("id"),
-            "title": node.get("name"),
-            "tagline": node.get("tagline"),
-            "url": node.get("url"),
-            "points": node.get("votesCount", 0),
-            "comments": node.get("commentsCount", 0),
-            "created_at": node.get("createdAt"),
-        })
-    return json.dumps({
-        "query": query,
-        "source": "producthunt",
-        "hits": hits,
-        "count": len(hits),
-    })
+        hits.append(
+            {
+                "id": node.get("id"),
+                "title": node.get("name"),
+                "tagline": node.get("tagline"),
+                "url": node.get("url"),
+                "points": node.get("votesCount", 0),
+                "comments": node.get("commentsCount", 0),
+                "created_at": node.get("createdAt"),
+            }
+        )
+    return json.dumps(
+        {
+            "query": query,
+            "source": "producthunt",
+            "hits": hits,
+            "count": len(hits),
+        }
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -483,9 +516,7 @@ async def opencorporates_search(
     """
     _check_tenant(headers)
     s = get_settings()
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.get(
             f"{s.opencorporates_api_base.rstrip('/')}/companies/search",
             params={"q": query, "per_page": min(n, 30)},
@@ -497,18 +528,24 @@ async def opencorporates_search(
     results = []
     for company in data.get("results", {}).get("companies", [])[:n]:
         c = company.get("company", {})
-        results.append({
-            "name": c.get("name"),
-            "jurisdiction": c.get("jurisdiction_code"),
-            "company_number": c.get("company_number"),
-            "incorporation_date": c.get("incorporation_date"),
-            "status": c.get("current_status"),
-            "address": c.get("registered_address_in_full"),
-            "opencorporates_url": c.get("opencorporates_url"),
-        })
-    return json.dumps({
-        "query": query, "companies": results, "count": len(results),
-    })
+        results.append(
+            {
+                "name": c.get("name"),
+                "jurisdiction": c.get("jurisdiction_code"),
+                "company_number": c.get("company_number"),
+                "incorporation_date": c.get("incorporation_date"),
+                "status": c.get("current_status"),
+                "address": c.get("registered_address_in_full"),
+                "opencorporates_url": c.get("opencorporates_url"),
+            }
+        )
+    return json.dumps(
+        {
+            "query": query,
+            "companies": results,
+            "count": len(results),
+        }
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -531,8 +568,12 @@ async def wikipedia_search_direct(
         resp = await client.get(
             s.wikipedia_api_url,
             params={
-                "action": "opensearch", "search": query, "limit": n,
-                "namespace": "0", "format": "json", "origin": "*",
+                "action": "opensearch",
+                "search": query,
+                "limit": n,
+                "namespace": "0",
+                "format": "json",
+                "origin": "*",
             },
         )
         if resp.status_code != 200:
@@ -583,9 +624,9 @@ async def sec_financials(
         else:
             map_resp = await client.get(SEC_TICKER_MAP_URL)
             if map_resp.status_code != 200:
-                return json.dumps({
-                    "error": f"SEC ticker map {map_resp.status_code}: {map_resp.text[:200]}"
-                })
+                return json.dumps(
+                    {"error": f"SEC ticker map {map_resp.status_code}: {map_resp.text[:200]}"}
+                )
             ticker_upper = identifier.upper()
             cik = None
             for entry in map_resp.json().values():
@@ -593,40 +634,41 @@ async def sec_financials(
                     cik = str(entry["cik_str"]).zfill(10)
                     break
             if cik is None:
-                return json.dumps({
-                    "error": "ticker_not_found",
-                    "detail": f"{identifier} is not in SEC company_tickers.json",
-                })
+                return json.dumps(
+                    {
+                        "error": "ticker_not_found",
+                        "detail": f"{identifier} is not in SEC company_tickers.json",
+                    }
+                )
 
         concept_resp = await client.get(
-            f"{s.sec_edgar_api_base.rstrip('/')}/xbrl/companyconcept"
-            f"/CIK{cik}/{taxonomy}/{tag}.json"
+            f"{s.sec_edgar_api_base.rstrip('/')}/xbrl/companyconcept/CIK{cik}/{taxonomy}/{tag}.json"
         )
         if concept_resp.status_code != 200:
-            return json.dumps({
-                "error": f"SEC EDGAR API {concept_resp.status_code}: {concept_resp.text[:200]}"
-            })
+            return json.dumps(
+                {"error": f"SEC EDGAR API {concept_resp.status_code}: {concept_resp.text[:200]}"}
+            )
         data = concept_resp.json()
 
     units = data.get("units") or {}
     unit = next(iter(units), None)
     observations = [
         {"end": o.get("end"), "val": o.get("val")}
-        for o in sorted(
-            units.get(unit, []), key=lambda o: str(o.get("end") or ""), reverse=True
-        )
+        for o in sorted(units.get(unit, []), key=lambda o: str(o.get("end") or ""), reverse=True)
     ][:8]
-    return json.dumps({
-        "metric": metric,
-        "taxonomy": taxonomy,
-        "tag": tag,
-        "cik": data.get("cik"),
-        "entity_name": data.get("entityName"),
-        "label": data.get("label"),
-        "unit": unit,
-        "observations": observations,
-        "count": len(observations),
-    })
+    return json.dumps(
+        {
+            "metric": metric,
+            "taxonomy": taxonomy,
+            "tag": tag,
+            "cik": data.get("cik"),
+            "entity_name": data.get("entityName"),
+            "label": data.get("label"),
+            "unit": unit,
+            "observations": observations,
+            "count": len(observations),
+        }
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -657,19 +699,19 @@ async def wikipedia_pageviews(
     ) as client:
         resp = await client.get(url)
         if resp.status_code != 200:
-            return json.dumps({
-                "error": f"Wikimedia API {resp.status_code}: {resp.text[:200]}"
-            })
+            return json.dumps({"error": f"Wikimedia API {resp.status_code}: {resp.text[:200]}"})
         data = resp.json()
 
     points = [
         {"date": item.get("timestamp"), "views": int(item.get("views", 0))}
         for item in data.get("items", [])
     ]
-    return json.dumps({
-        "article": article,
-        "granularity": granularity,
-        "points": points,
-        "total_views": sum(p["views"] for p in points),
-        "count": len(points),
-    })
+    return json.dumps(
+        {
+            "article": article,
+            "granularity": granularity,
+            "points": points,
+            "total_views": sum(p["views"] for p in points),
+            "count": len(points),
+        }
+    )

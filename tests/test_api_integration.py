@@ -3,6 +3,7 @@
 These cover the full campaign lifecycle: create → run graph (pauses for HITL)
 → inspect review packet → approve / reject → KPIs, traces, and audit events.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,17 +40,13 @@ async def _create_campaign(api_client, headers, name="Acme CRM Launch"):
 
 
 async def _run_campaign(api_client, headers, campaign_id):
-    response = await api_client.post(
-        f"/campaigns/{campaign_id}/run", headers=headers
-    )
+    response = await api_client.post(f"/campaigns/{campaign_id}/run", headers=headers)
     assert response.status_code == 200, response.text
     return response.json()
 
 
 class TestCampaignCrud:
-    async def test_create_list_get_and_tenant_isolation(
-        self, api_client, tenant_headers
-    ):
+    async def test_create_list_get_and_tenant_isolation(self, api_client, tenant_headers):
         acme = tenant_headers("acme")
         other = tenant_headers("other")
 
@@ -110,9 +107,7 @@ class TestCampaignReviewLifecycle:
         assert pending["count"] == 1
         assert pending["pending"][0]["id"] == campaign["id"]
 
-        packet_response = await api_client.get(
-            f"/reviews/{campaign['id']}/packet", headers=headers
-        )
+        packet_response = await api_client.get(f"/reviews/{campaign['id']}/packet", headers=headers)
         assert packet_response.status_code == 200
         packet = packet_response.json()["packet"]
         assert packet["creative"]["headline"] == run["final_state"]["creative"]["headline"]
@@ -134,17 +129,11 @@ class TestCampaignReviewLifecycle:
         assert "publish" in body["next_step"]
 
         # Campaign status is approved, not live, until the publish adapter runs.
-        fetched = (
-            await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)
-        ).json()
+        fetched = (await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)).json()
         assert fetched["status"] == "approved"
 
         # KPI snapshots exist for both channels, 7 days each.
-        kpis = (
-            await api_client.get(
-                f"/kpis/{campaign['id']}/snapshots", headers=headers
-            )
-        ).json()
+        kpis = (await api_client.get(f"/kpis/{campaign['id']}/snapshots", headers=headers)).json()
         assert kpis["count"] == 14
         assert {row["channel"] for row in kpis["snapshots"]} == {"google", "linkedin"}
 
@@ -158,16 +147,12 @@ class TestCampaignReviewLifecycle:
             "linkedin",
         }
         by_day = (
-            await api_client.get(
-                f"/kpis/{campaign['id']}/aggregate?group_by=day", headers=headers
-            )
+            await api_client.get(f"/kpis/{campaign['id']}/aggregate?group_by=day", headers=headers)
         ).json()
         assert len(by_day["buckets"]) == 7
 
         # Campaign totals were rolled up from the KPI snapshots.
-        fetched = (
-            await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)
-        ).json()
+        fetched = (await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)).json()
         assert fetched["total_spend_usd"] > 0
         assert fetched["total_revenue_usd"] > 0
 
@@ -218,9 +203,7 @@ class TestCampaignReviewLifecycle:
         async def failing_fetch(*args, **kwargs):
             raise RuntimeError("no ad account credentials configured")
 
-        monkeypatch.setattr(
-            kpi_agent_module, "fetch_channel_snapshots", failing_fetch
-        )
+        monkeypatch.setattr(kpi_agent_module, "fetch_channel_snapshots", failing_fetch)
 
         headers = tenant_headers("acme")
         campaign = await _create_campaign(api_client, headers)
@@ -239,9 +222,7 @@ class TestCampaignReviewLifecycle:
         assert body["status"] == "approved", body
         assert body["approval_token_issued"] is True
 
-        fetched = (
-            await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)
-        ).json()
+        fetched = (await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)).json()
         assert fetched["status"] == "approved"
 
     @respx.mock
@@ -251,9 +232,7 @@ class TestCampaignReviewLifecycle:
         from adforge.config import get_settings
 
         monkeypatch.setenv("ADFORGE_ENABLE_LIVE_WRITES", "true")
-        monkeypatch.setenv(
-            "ADFORGE_PUBLISH_WEBHOOK_URL", "https://ads.example.test/publish"
-        )
+        monkeypatch.setenv("ADFORGE_PUBLISH_WEBHOOK_URL", "https://ads.example.test/publish")
         get_settings.cache_clear()
 
         headers = tenant_headers("acme")
@@ -271,9 +250,7 @@ class TestCampaignReviewLifecycle:
         assert "approval_token" not in approved.json()
 
         webhook = respx.post("https://ads.example.test/publish").mock(
-            return_value=httpx.Response(
-                200, json={"external_campaign_id": "ext-1"}
-            )
+            return_value=httpx.Response(200, json={"external_campaign_id": "ext-1"})
         )
 
         published = await api_client.post(
@@ -286,26 +263,18 @@ class TestCampaignReviewLifecycle:
         assert len(body["published"]) == 2
         # One adapter call per channel allocation.
         assert webhook.call_count == 2
-        sent_channels = {
-            json.loads(call.request.content)["channel"] for call in webhook.calls
-        }
+        sent_channels = {json.loads(call.request.content)["channel"] for call in webhook.calls}
         assert sent_channels == {"google", "linkedin"}
 
-        fetched = (
-            await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)
-        ).json()
+        fetched = (await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)).json()
         assert fetched["status"] == "live"
 
         # The single-use token was consumed: a second publish must not spend.
-        again = await api_client.post(
-            f"/reviews/{campaign['id']}/publish", headers=review_headers
-        )
+        again = await api_client.post(f"/reviews/{campaign['id']}/publish", headers=review_headers)
         assert again.status_code == 409
         assert webhook.call_count == 2
 
-    async def test_reject_routes_back_and_re_reviews(
-        self, api_client, tenant_headers, graph_llm
-    ):
+    async def test_reject_routes_back_and_re_reviews(self, api_client, tenant_headers, graph_llm):
         headers = tenant_headers("acme")
         campaign = await _create_campaign(api_client, headers)
         await _run_campaign(api_client, headers, campaign["id"])
@@ -330,9 +299,7 @@ class TestCampaignReviewLifecycle:
             for m in call
         )
 
-    async def test_three_rejections_block_the_campaign(
-        self, api_client, tenant_headers, graph_llm
-    ):
+    async def test_three_rejections_block_the_campaign(self, api_client, tenant_headers, graph_llm):
         headers = tenant_headers("acme")
         campaign = await _create_campaign(api_client, headers)
         await _run_campaign(api_client, headers, campaign["id"])
@@ -346,9 +313,7 @@ class TestCampaignReviewLifecycle:
             assert response.status_code == 200, response.text
 
         assert response.json()["status"] == "blocked"
-        fetched = (
-            await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)
-        ).json()
+        fetched = (await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)).json()
         assert fetched["status"] == "blocked"
 
     async def test_reviewer_allowlist_enforced(
@@ -393,9 +358,7 @@ class TestCampaignReviewLifecycle:
         campaign = await _create_campaign(api_client, owner)
         await _run_campaign(api_client, owner, campaign["id"])
 
-        packet = await api_client.get(
-            f"/reviews/{campaign['id']}/packet", headers=intruder
-        )
+        packet = await api_client.get(f"/reviews/{campaign['id']}/packet", headers=intruder)
         assert packet.status_code == 404
 
         approve = await api_client.post(
@@ -405,9 +368,7 @@ class TestCampaignReviewLifecycle:
         )
         assert approve.status_code == 404
 
-    async def test_critical_compliance_auto_blocks(
-        self, api_client, tenant_headers, monkeypatch
-    ):
+    async def test_critical_compliance_auto_blocks(self, api_client, tenant_headers, monkeypatch):
         from support import ScriptedLLM, default_agent_responses
 
         responses = default_agent_responses()
@@ -442,9 +403,7 @@ class TestCampaignReviewLifecycle:
         assert run["paused_for_review"] is False
         assert run["final_state"]["review_status"] == "auto_blocked"
 
-        fetched = (
-            await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)
-        ).json()
+        fetched = (await api_client.get(f"/campaigns/{campaign['id']}", headers=headers)).json()
         assert fetched["status"] == "blocked"
 
         pending = (await api_client.get("/reviews/pending", headers=headers)).json()
@@ -464,9 +423,7 @@ class TestTraces:
             headers={**headers, "X-AdForge-Reviewer": "rev@acme.test"},
         )
 
-        runs_response = await api_client.get(
-            f"/traces/{campaign['id']}/runs", headers=headers
-        )
+        runs_response = await api_client.get(f"/traces/{campaign['id']}/runs", headers=headers)
         assert runs_response.status_code == 200
         runs = runs_response.json()
         assert runs["count"] >= 7
@@ -486,9 +443,7 @@ class TestTraces:
         )
         assert filtered.json()["count"] == 1
 
-        audit_response = await api_client.get(
-            f"/traces/{campaign['id']}/audit", headers=headers
-        )
+        audit_response = await api_client.get(f"/traces/{campaign['id']}/audit", headers=headers)
         assert audit_response.status_code == 200
         events = audit_response.json()["events"]
         event_types = {event["event_type"] for event in events}

@@ -4,6 +4,7 @@ These pin the parts of ``adforge.dashboard.theme`` that are easy to regress
 silently: escaping in the public HTML helpers, numeric-column alignment in the
 ledger tables, and the Mermaid viewport-fit script that keeps diagrams legible.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -49,9 +50,9 @@ class TestLedgerTable:
             [["research", "<b>1,234</b>"]],
             numeric_cols={1},
         )
-        assert '<th>Agent</th>' in table
+        assert "<th>Agent</th>" in table
         assert '<th class="af-num">Tokens</th>' in table
-        assert '<td>research</td>' in table
+        assert "<td>research</td>" in table
         assert '<td class="af-num"><b>1,234</b></td>' in table
 
     def test_escapes_headers_but_keeps_trusted_cell_html(self):
@@ -113,9 +114,7 @@ class TestMermaidRenderer:
 
     def test_embeds_the_source_as_json(self, monkeypatch):
         captured: list[str] = []
-        monkeypatch.setattr(
-            theme.st.components.v1, "html", lambda doc, **_: captured.append(doc)
-        )
+        monkeypatch.setattr(theme.st.components.v1, "html", lambda doc, **_: captured.append(doc))
         source = 'flowchart LR\n    A["He said \\"go\\""] --> B'
         theme.render_mermaid(source, 300)
         # Quotes and newlines are JSON-escaped into the component script.

@@ -6,6 +6,7 @@ The mock path is gated by ``APP_ENV in {dev, test}`` plus per-channel
 the explicit missing-external-id error. No HTTP is involved — respx is not
 needed here.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -72,19 +73,14 @@ def _input(*, media_plan=None, **overrides):
 class TestMockMode:
     async def test_dev_mock_returns_snapshots_without_external_id(self, monkeypatch):
         _env(monkeypatch, APP_ENV="dev", GOOGLE_ADS_USE_MOCK="true")
-        first = await fetch_channel_snapshots(
-            _scope(), "google", CAMPAIGN_ID, start=START, end=END
-        )
+        first = await fetch_channel_snapshots(_scope(), "google", CAMPAIGN_ID, start=START, end=END)
         second = await fetch_channel_snapshots(
             _scope(), "google", CAMPAIGN_ID, start=START, end=END
         )
         assert first
         assert all(s.is_mock for s in first)
         assert all(s.source.startswith("mock_") for s in first)
-        assert all(
-            s.campaign_external_id == f"mock-google-{str(CAMPAIGN_ID)[:8]}"
-            for s in first
-        )
+        assert all(s.campaign_external_id == f"mock-google-{str(CAMPAIGN_ID)[:8]}" for s in first)
         # Deterministic: same inputs → identical snapshots across calls.
         assert first == second
 
@@ -92,8 +88,12 @@ class TestMockMode:
         """Mock mode means no HTTP at all, even when an external id is given."""
         _env(monkeypatch, APP_ENV="dev", META_USE_MOCK="true")
         snapshots = await fetch_channel_snapshots(
-            _scope(), "meta", CAMPAIGN_ID, external_id="real-123",
-            start=START, end=END,
+            _scope(),
+            "meta",
+            CAMPAIGN_ID,
+            external_id="real-123",
+            start=START,
+            end=END,
         )
         assert snapshots
         assert all(s.is_mock for s in snapshots)
@@ -109,22 +109,22 @@ class TestMockMode:
             CHECKPOINTER_BACKEND="postgres",
         )
         with pytest.raises(AdPlatformError, match="campaign_external_id"):
-            await fetch_channel_snapshots(
-                _scope(), "google", CAMPAIGN_ID, start=START, end=END
-            )
+            await fetch_channel_snapshots(_scope(), "google", CAMPAIGN_ID, start=START, end=END)
 
     async def test_dev_with_mock_disabled_keeps_explicit_error(self, monkeypatch):
         _env(monkeypatch, APP_ENV="dev", LINKEDIN_USE_MOCK="false")
         with pytest.raises(AdPlatformError, match="campaign_external_id"):
-            await fetch_channel_snapshots(
-                _scope(), "linkedin", CAMPAIGN_ID, start=START, end=END
-            )
+            await fetch_channel_snapshots(_scope(), "linkedin", CAMPAIGN_ID, start=START, end=END)
 
     async def test_mock_respects_channel_budget(self, monkeypatch):
         _env(monkeypatch, APP_ENV="dev", TIKTOK_USE_MOCK="true")
         budget = 100.0
         snapshots = await fetch_channel_snapshots(
-            _scope(), "tiktok", CAMPAIGN_ID, start=START, end=END,
+            _scope(),
+            "tiktok",
+            CAMPAIGN_ID,
+            start=START,
+            end=END,
             budget_usd=budget,
         )
         total_spend = sum(s.spend_usd for s in snapshots)
@@ -134,13 +134,9 @@ class TestMockMode:
     def test_mock_helper_is_stable_per_day(self):
         """Per-day seeding depends only on tenant/campaign/channel/date."""
         scope = _scope()
-        rows = _fetch_mock_snapshots(
-            scope, "google", CAMPAIGN_ID, start=START, end=END
-        )
+        rows = _fetch_mock_snapshots(scope, "google", CAMPAIGN_ID, start=START, end=END)
         assert len(rows) == (END - START).days + 1
-        assert [r.platform_date for r in rows] == [
-            date(2026, 1, day) for day in range(1, 11)
-        ]
+        assert [r.platform_date for r in rows] == [date(2026, 1, day) for day in range(1, 11)]
 
 
 class TestAgentMockPayload:
@@ -155,13 +151,7 @@ class TestAgentMockPayload:
         monkeypatch.setattr(kpi_agent_module, "persist_snapshots", fake_persist)
         agent = KpiAnalyticsAgent(llm=ScriptedLLM(default={}))
         result = await agent.run(
-            _input(
-                media_plan={
-                    "channel_allocations": [
-                        {"channel": "google", "budget_usd": 400.0}
-                    ]
-                }
-            )
+            _input(media_plan={"channel_allocations": [{"channel": "google", "budget_usd": 400.0}]})
         )
         assert result.ok is True
         payload = result.output.payload
@@ -169,7 +159,5 @@ class TestAgentMockPayload:
         assert payload["errors"] == []
         assert payload["snapshots"]
         assert all(row["is_mock"] for row in payload["snapshots"])
-        assert all(
-            row["source"].startswith("mock_") for row in payload["snapshots"]
-        )
+        assert all(row["source"].startswith("mock_") for row in payload["snapshots"])
         assert sum(row["spend_usd"] for row in payload["snapshots"]) <= 400.0

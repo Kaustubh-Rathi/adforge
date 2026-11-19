@@ -3,6 +3,7 @@
 Covers the free DuckDuckGo + Wikipedia path, the optional Tavily fallback,
 the deterministic mock fallback, and every tenant-gated tool wrapper.
 """
+
 from __future__ import annotations
 
 import json
@@ -111,9 +112,7 @@ class TestWikipediaProvider:
                     200,
                     json={
                         "query": {
-                            "pages": {
-                                "1": {"extract": "A long extract about project management."}
-                            }
+                            "pages": {"1": {"extract": "A long extract about project management."}}
                         }
                     },
                 ),
@@ -218,9 +217,7 @@ class TestWebSearchChain:
         respx.get(url__regex=r"https://html\.duckduckgo\.com/html/.*").mock(
             return_value=httpx.Response(200, text="<html>no results</html>")
         )
-        respx.get(url__regex=DDG_LITE_REGEX).mock(
-            return_value=httpx.Response(451, text="blocked")
-        )
+        respx.get(url__regex=DDG_LITE_REGEX).mock(return_value=httpx.Response(451, text="blocked"))
         respx.get(BING_RSS_URL).mock(return_value=httpx.Response(503, text="down"))
         respx.get(WIKI_URL).mock(
             side_effect=[
@@ -241,9 +238,7 @@ class TestWebSearchChain:
         respx.get(url__regex=r"https://html\.duckduckgo\.com/html/.*").mock(
             return_value=httpx.Response(200, text="<html></html>")
         )
-        respx.get(url__regex=DDG_LITE_REGEX).mock(
-            return_value=httpx.Response(451, text="blocked")
-        )
+        respx.get(url__regex=DDG_LITE_REGEX).mock(return_value=httpx.Response(451, text="blocked"))
         respx.get(BING_RSS_URL).mock(return_value=httpx.Response(503, text="down"))
         respx.get(WIKI_URL).mock(return_value=httpx.Response(200, json=["q", []]))
         respx.post(TAVILY_URL).mock(
@@ -268,9 +263,7 @@ class TestWebSearchChain:
         respx.get(url__regex=r"https://html\.duckduckgo\.com/html/.*").mock(
             return_value=httpx.Response(503, text="down")
         )
-        respx.get(url__regex=DDG_LITE_REGEX).mock(
-            return_value=httpx.Response(451, text="blocked")
-        )
+        respx.get(url__regex=DDG_LITE_REGEX).mock(return_value=httpx.Response(451, text="blocked"))
         respx.get(BING_RSS_URL).mock(return_value=httpx.Response(503, text="down"))
         respx.get(WIKI_URL).mock(return_value=httpx.Response(503, text="down"))
         payload = json.loads(await web_search("q", max_results=2, headers=HEADERS))
@@ -288,9 +281,7 @@ class TestTools:
                 httpx.Response(200, json={"query": {"pages": {"1": {"extract": "hi"}}}}),
             ]
         )
-        payload = json.loads(
-            await wikipedia_search("one", n=1, headers=HEADERS)
-        )
+        payload = json.loads(await wikipedia_search("one", n=1, headers=HEADERS))
         assert payload["query"] == "one"
         assert payload["count"] == 1
 
@@ -306,13 +297,9 @@ class TestTools:
     @respx.mock
     async def test_keyword_clusters_respects_cap(self):
         respx.get(url__regex=r"https://suggestqueries\.google\.com/.*").mock(
-            return_value=httpx.Response(
-                200, json=["crm", [f"suggestion {i}" for i in range(120)]]
-            )
+            return_value=httpx.Response(200, json=["crm", [f"suggestion {i}" for i in range(120)]])
         )
-        payload = json.loads(
-            await keyword_clusters("crm", n=100, headers=HEADERS)
-        )
+        payload = json.loads(await keyword_clusters("crm", n=100, headers=HEADERS))
         assert payload["seed"] == "crm"
         assert payload["source"] == "google_suggest"
         assert len(payload["clusters"]) == 100
@@ -341,9 +328,7 @@ class TestTools:
 
         monkeypatch.delenv("META_AD_LIBRARY_TOKEN", raising=False)
         get_settings.cache_clear()
-        payload = json.loads(
-            await competitor_creatives("acme.example", headers=HEADERS)
-        )
+        payload = json.loads(await competitor_creatives("acme.example", headers=HEADERS))
         assert payload["domain"] == "acme.example"
         assert payload["creatives"] == []
         assert payload["error"] == "meta_ad_library_token_not_configured"
@@ -369,9 +354,7 @@ class TestTools:
                 },
             )
         )
-        payload = json.loads(
-            await competitor_creatives("acme.example", headers=HEADERS)
-        )
+        payload = json.loads(await competitor_creatives("acme.example", headers=HEADERS))
         assert payload["count"] == 1
         assert payload["creatives"][0]["headline"] == "Try Acme today"
         assert payload["creatives"][0]["platform"] == "meta"

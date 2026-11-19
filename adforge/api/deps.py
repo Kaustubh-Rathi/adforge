@@ -1,4 +1,5 @@
 """Shared API dependencies."""
+
 from __future__ import annotations
 
 import hmac

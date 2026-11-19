@@ -1,4 +1,5 @@
 """Campaigns API — CRUD + run-the-graph endpoint."""
+
 from __future__ import annotations
 
 import json
@@ -11,7 +12,7 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adforge.api.deps import get_db, get_tenant, get_tenant_scope
-from adforge.graph.state import clear_thread, get_compiled_graph, thread_id_for
+from adforge.graph.state import clear_thread, get_compiled_graph, graph_config
 from adforge.guardrails.contracts import CampaignBrief
 from adforge.guardrails.data_isolation import TenantScope
 
@@ -54,9 +55,13 @@ async def create_campaign(
         },
     )
     return CampaignResponse(
-        id=campaign_id, tenant_id=tenant_id, name=body.name,
-        brief=body.brief.model_dump(), status="draft",
-        total_spend_usd=0.0, total_revenue_usd=0.0,
+        id=campaign_id,
+        tenant_id=tenant_id,
+        name=body.name,
+        brief=body.brief.model_dump(),
+        status="draft",
+        total_spend_usd=0.0,
+        total_revenue_usd=0.0,
     )
 
 
@@ -75,7 +80,9 @@ async def list_campaigns(
     rows = result.fetchall()
     return [
         CampaignResponse(
-            id=r.id, tenant_id=r.tenant_id, name=r.name,
+            id=r.id,
+            tenant_id=r.tenant_id,
+            name=r.name,
             brief=r.brief if isinstance(r.brief, dict) else json.loads(r.brief),
             status=r.status,
             total_spend_usd=float(r.total_spend_usd),
@@ -102,7 +109,9 @@ async def get_campaign(
     if not r:
         raise HTTPException(status_code=404, detail="Campaign not found")
     return CampaignResponse(
-        id=r.id, tenant_id=r.tenant_id, name=r.name,
+        id=r.id,
+        tenant_id=r.tenant_id,
+        name=r.name,
         brief=r.brief if isinstance(r.brief, dict) else json.loads(r.brief),
         status=r.status,
         total_spend_usd=float(r.total_spend_usd),
@@ -142,9 +151,7 @@ async def run_campaign(
 
     # Update campaign status to 'designing'
     await db.execute(
-        sql_text(
-            "UPDATE campaigns SET status = 'designing' WHERE id = :id AND tenant_id = :tid"
-        ),
+        sql_text("UPDATE campaigns SET status = 'designing' WHERE id = :id AND tenant_id = :tid"),
         {"id": str(campaign_id), "tid": scope.tenant_id},
     )
     await db.commit()
@@ -152,7 +159,7 @@ async def run_campaign(
     # Run the graph from a clean checkpoint. Re-running a previously approved
     # campaign must never inherit its old approval token or review state.
     graph = await get_compiled_graph()
-    config = {"configurable": {"thread_id": thread_id_for(campaign_id)}}
+    config = graph_config(campaign_id)
     await clear_thread(campaign_id)
     final_state = await graph.ainvoke(initial, config=config)
 
@@ -176,9 +183,7 @@ async def run_campaign(
         new_status = "approved"
 
     await db.execute(
-        sql_text(
-            "UPDATE campaigns SET status = :status WHERE id = :id AND tenant_id = :tid"
-        ),
+        sql_text("UPDATE campaigns SET status = :status WHERE id = :id AND tenant_id = :tid"),
         {"id": str(campaign_id), "tid": scope.tenant_id, "status": new_status},
     )
 
@@ -186,9 +191,7 @@ async def run_campaign(
     # The approval token is a bearer credential: it must never leave the
     # server except through the approval-gated publish path.
     public_state = {
-        k: v
-        for k, v in final_state.items()
-        if not k.startswith("__") and k != "approval_token"
+        k: v for k, v in final_state.items() if not k.startswith("__") and k != "approval_token"
     }
 
     return {

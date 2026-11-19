@@ -1,4 +1,5 @@
 """Tests for v0.2 additions: HITL review, read-only enforcement, public-data MCP."""
+
 from __future__ import annotations
 
 import json
@@ -16,12 +17,14 @@ class TestPermissions:
         @permissions.readonly
         async def my_read_tool():
             return "ok"
+
         assert my_read_tool.__adforge_permission__ == "readonly"
 
     def test_write_operation_decorator_marks_function(self):
         @permissions.write_operation(requires_approval=True)
         async def my_write_tool(headers=None):
             return json.dumps({"ok": True})
+
         assert my_write_tool.__adforge_permission__ == "write"
         assert my_write_tool.__adforge_requires_approval__ is True
 
@@ -29,6 +32,7 @@ class TestPermissions:
     async def test_write_operation_blocks_without_token(self, monkeypatch):
         # Ensure no APP_SECRET is set — no approval can be valid
         from adforge.config import get_settings
+
         get_settings.cache_clear()
         monkeypatch.setenv("APP_SECRET", "test-secret-12345")
 
@@ -45,6 +49,7 @@ class TestPermissions:
     @pytest.mark.asyncio
     async def test_issue_approval_token_round_trip(self, monkeypatch):
         from adforge.config import get_settings
+
         get_settings.cache_clear()
         monkeypatch.setenv("APP_SECRET", "test-secret-12345")
         campaign_id = str(uuid4())
@@ -68,9 +73,7 @@ class TestPermissions:
         assert permissions._verify_approval_token(token, campaign_id, "pause") is False
         # Wrong tenant must fail
         assert (
-            permissions._verify_approval_token(
-                token, campaign_id, "publish", tenant_id="other"
-            )
+            permissions._verify_approval_token(token, campaign_id, "publish", tenant_id="other")
             is False
         )
 
@@ -81,9 +84,7 @@ class TestPermissions:
 
         monkeypatch.setenv("APP_SECRET", "test-secret-12345")
         monkeypatch.setenv("ADFORGE_ENABLE_LIVE_WRITES", "true")
-        monkeypatch.setenv(
-            "ADFORGE_PUBLISH_WEBHOOK_URL", "https://ads.example.test/publish"
-        )
+        monkeypatch.setenv("ADFORGE_PUBLISH_WEBHOOK_URL", "https://ads.example.test/publish")
         get_settings.cache_clear()
         campaign_id = str(uuid4())
 
@@ -139,9 +140,7 @@ class TestPublicDataMcp:
     @pytest.mark.asyncio
     async def test_appstore_search_returns_real_data(self):
         """iTunes Search API is public + requires no auth — should return real apps."""
-        result = await public_data.appstore_search(
-            "slack", headers={"X-AdForge-Tenant": "acme"}
-        )
+        result = await public_data.appstore_search("slack", headers={"X-AdForge-Tenant": "acme"})
         data = json.loads(result)
         # We can't assert specific app names (results vary), but the API should succeed
         assert "apps" in data
@@ -151,9 +150,7 @@ class TestPublicDataMcp:
     async def test_ipinfo_lookup_works_without_token(self):
         """IPInfo returns limited data without a token but doesn't error."""
         # 8.8.8.8 is Google DNS — definitely geolocatable
-        result = await public_data.ipinfo_lookup(
-            "8.8.8.8", headers={"X-AdForge-Tenant": "acme"}
-        )
+        result = await public_data.ipinfo_lookup("8.8.8.8", headers={"X-AdForge-Tenant": "acme"})
         data = json.loads(result)
         assert data.get("ip") == "8.8.8.8"
         # Without token, ipinfo may return city/country — depends on their rate limit
@@ -175,17 +172,17 @@ class TestPublicDataMcp:
     @pytest.mark.asyncio
     async def test_abuseipdb_requires_key(self, monkeypatch):
         from adforge.config import get_settings
+
         get_settings.cache_clear()
         monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
-        result = await public_data.abuseipdb_check(
-            "1.2.3.4", headers={"X-AdForge-Tenant": "acme"}
-        )
+        result = await public_data.abuseipdb_check("1.2.3.4", headers={"X-AdForge-Tenant": "acme"})
         data = json.loads(result)
         assert data["error"] == "abuseipdb_not_configured"
 
     @pytest.mark.asyncio
     async def test_similarweb_requires_key(self, monkeypatch):
         from adforge.config import get_settings
+
         get_settings.cache_clear()
         monkeypatch.delenv("SIMILARWEB_API_KEY", raising=False)
         result = await public_data.similarweb_traffic(
@@ -197,46 +194,58 @@ class TestPublicDataMcp:
 
     def test_all_public_data_tools_are_readonly(self):
         """Verify no public-data tool can mutate external state."""
-        for tool_name in ["similarweb_traffic", "appstore_search", "appstore_reviews",
-                          "ipinfo_lookup", "abuseipdb_check", "github_repo_stats"]:
+        for tool_name in [
+            "similarweb_traffic",
+            "appstore_search",
+            "appstore_reviews",
+            "ipinfo_lookup",
+            "abuseipdb_check",
+            "github_repo_stats",
+        ]:
             tool = getattr(public_data, tool_name)
-            assert tool.__adforge_permission__ == "readonly", \
-                f"{tool_name} must be @readonly"
+            assert tool.__adforge_permission__ == "readonly", f"{tool_name} must be @readonly"
 
 
 class TestGraphWithHitl:
     def test_graph_includes_human_review_node(self):
         from adforge.graph.state import build_graph
+
         builder = build_graph()
         assert "human_review" in builder.nodes
 
     def test_route_after_compliance_goes_to_human_review(self):
         from adforge.graph.state import route_after_compliance
+
         # Regardless of compliance verdict, we route through HITL (unless auto_blocked)
         state = {"compliance_verdict": {"approved": True, "risk_level": "low"}}
         assert route_after_compliance(state) == "human_review"
 
     def test_route_after_review_approved(self):
         from adforge.graph.state import route_after_review
+
         state = {"review_status": "approved"}
         assert route_after_review(state) == "kpi_analytics"
 
     def test_route_after_review_rejected_routes_to_creative(self):
         from adforge.graph.state import route_after_review
+
         state = {"review_status": "rejected", "revision_count": 1}
         assert route_after_review(state) == "creative_strategist"
 
     def test_route_after_review_rejected_max_revisions_ends(self):
         from adforge.graph.state import route_after_review
+
         state = {"review_status": "rejected", "revision_count": 3}
         assert route_after_review(state) == "__end__"
 
     def test_route_after_review_auto_blocked_ends(self):
         from adforge.graph.state import END, route_after_review
+
         state = {"review_status": "auto_blocked"}
         assert route_after_review(state) == END
 
     def test_route_after_review_skipped_in_dev(self):
         from adforge.graph.state import route_after_review
+
         state = {"review_status": "skipped"}
         assert route_after_review(state) == "kpi_analytics"

@@ -1,4 +1,5 @@
 """Media Planner agent node."""
+
 from __future__ import annotations
 
 import json
@@ -19,11 +20,18 @@ class MediaPlannerAgent(BaseAgent):
 
     def build_messages(self, agent_input: AgentInput) -> list[dict[str, str]]:
         brief = agent_input.brief.model_dump_json(indent=2) if agent_input.brief else "{}"
-        research = json.dumps(agent_input.upstream_payloads.get("research", {}), indent=2, default=str)
-        creative = json.dumps(agent_input.upstream_payloads.get("creative", {}), indent=2, default=str)
+        research = json.dumps(
+            agent_input.upstream_payloads.get("research", {}), indent=2, default=str
+        )
+        creative = json.dumps(
+            agent_input.upstream_payloads.get("creative", {}), indent=2, default=str
+        )
 
         today = datetime.now(UTC).strftime("%Y-%m-%d")
-        end = (datetime.now(UTC) + timedelta(days=agent_input.brief.duration_days if agent_input.brief else 30)).strftime("%Y-%m-%d")
+        end = (
+            datetime.now(UTC)
+            + timedelta(days=agent_input.brief.duration_days if agent_input.brief else 30)
+        ).strftime("%Y-%m-%d")
         budget = agent_input.brief.budget_usd if agent_input.brief else None
         budget_rule = (
             f"HARD CONSTRAINT: total_budget_usd MUST be exactly {budget:.2f} "
@@ -59,13 +67,15 @@ class MediaPlannerAgent(BaseAgent):
         ):
             raise ContractValidationError(
                 agent_name=self.name,
-                errors=[{
-                    "type": "budget_exceeds_brief",
-                    "message": (
-                        f"media plan total ${plan['total_budget_usd']:,.2f} "
-                        f"exceeds the campaign budget "
-                        f"${agent_input.brief.budget_usd:,.2f}"
-                    ),
-                }],
+                errors=[
+                    {
+                        "type": "budget_exceeds_brief",
+                        "message": (
+                            f"media plan total ${plan['total_budget_usd']:,.2f} "
+                            f"exceeds the campaign budget "
+                            f"${agent_input.brief.budget_usd:,.2f}"
+                        ),
+                    }
+                ],
             )
         return plan

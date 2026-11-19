@@ -1,4 +1,5 @@
 """Compliance agent node — uses PolicyEnforcer + LLM for nuanced review."""
+
 from __future__ import annotations
 
 import json
@@ -21,8 +22,12 @@ class ComplianceAgent(BaseAgent):
         self._enforcer = PolicyEnforcer.default()
 
     def build_messages(self, agent_input: AgentInput) -> list[dict[str, str]]:
-        creative = json.dumps(agent_input.upstream_payloads.get("creative", {}), indent=2, default=str)
-        media_plan = json.dumps(agent_input.upstream_payloads.get("media_plan", {}), indent=2, default=str)
+        creative = json.dumps(
+            agent_input.upstream_payloads.get("creative", {}), indent=2, default=str
+        )
+        media_plan = json.dumps(
+            agent_input.upstream_payloads.get("media_plan", {}), indent=2, default=str
+        )
 
         return [
             {"role": "system", "content": self.persona},
@@ -49,11 +54,13 @@ class ComplianceAgent(BaseAgent):
         # Re-run the deterministic PolicyEnforcer as a hard gate.
         creative = agent_input.upstream_payloads.get("creative", {})
         media_plan = agent_input.upstream_payloads.get("media_plan", {})
-        creative_text = " ".join([
-            str(creative.get("headline", "")),
-            str(creative.get("primary_text", "")),
-            str(creative.get("cta", "")),
-        ])
+        creative_text = " ".join(
+            [
+                str(creative.get("headline", "")),
+                str(creative.get("primary_text", "")),
+                str(creative.get("cta", "")),
+            ]
+        )
         deterministic_verdict = self._enforcer.evaluate(
             creative_text,
             audience_targeting=media_plan.get("audience_targeting"),
@@ -68,12 +75,14 @@ class ComplianceAgent(BaseAgent):
                 deterministic_verdict.risk_level,
                 key=["low", "medium", "high", "critical"].index,
             ),
-            flagged_issues=list(set(
-                llm_verdict["flagged_issues"] + deterministic_verdict.flagged_issues
-            )),
-            required_disclosures=list(set(
-                llm_verdict["required_disclosures"] + deterministic_verdict.required_disclosures
-            )),
+            flagged_issues=list(
+                set(llm_verdict["flagged_issues"] + deterministic_verdict.flagged_issues)
+            ),
+            required_disclosures=list(
+                set(
+                    llm_verdict["required_disclosures"] + deterministic_verdict.required_disclosures
+                )
+            ),
             reviewer_notes=(
                 llm_verdict["reviewer_notes"]
                 + " | PolicyEnforcer: "

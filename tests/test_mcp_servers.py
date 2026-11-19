@@ -1,4 +1,5 @@
 """Tests for the MCP server tools — exercise the FastMCP tool functions directly."""
+
 from __future__ import annotations
 
 import json
@@ -17,9 +18,7 @@ class TestResearchMcp:
     @pytest.mark.asyncio
     async def test_web_search_uses_duckduckgo_first(self, monkeypatch):
         async def fake_ddg(query, max_results):
-            return [
-                {"title": "CRM guide", "url": "https://example.com/crm", "snippet": "Best CRM"}
-            ]
+            return [{"title": "CRM guide", "url": "https://example.com/crm", "snippet": "Best CRM"}]
 
         async def fail_wiki(query, n):
             raise AssertionError("wikipedia must not be reached")
@@ -52,9 +51,7 @@ class TestResearchMcp:
         monkeypatch.setattr(research, "_ddg_lite_search", empty_ddg_lite)
         monkeypatch.setattr(research, "_bing_rss_search", empty_bing_rss)
         monkeypatch.setattr(research, "_wikipedia_search", fake_wiki)
-        result = await research.web_search(
-            "CRM", headers={"X-AdForge-Tenant": "acme"}
-        )
+        result = await research.web_search("CRM", headers={"X-AdForge-Tenant": "acme"})
         assert json.loads(result)["provider"] == "wikipedia"
 
     @pytest.mark.asyncio
@@ -113,9 +110,7 @@ class TestRoiMcp:
 class TestComplianceMcp:
     @pytest.mark.asyncio
     async def test_evaluate_creative_requires_tenant(self):
-        result = await compliance.evaluate_creative(
-            "Great product, buy now!", headers=None
-        )
+        result = await compliance.evaluate_creative("Great product, buy now!", headers=None)
         data = json.loads(result)
         assert "error" in data
 
@@ -137,12 +132,8 @@ class TestComplianceMcp:
 
     @pytest.mark.asyncio
     async def test_list_required_disclosures(self):
-        result = await compliance.list_required_disclosures(
-            headers={"X-AdForge-Tenant": "acme"}
-        )
+        result = await compliance.list_required_disclosures(headers={"X-AdForge-Tenant": "acme"})
         data = json.loads(result)
         assert data["disclosures"]
-        assert any(
-            row["required_disclosure"] for row in data["disclosures"]
-        )
+        assert any(row["required_disclosure"] for row in data["disclosures"])
         assert all(row["rule_id"] for row in data["disclosures"])

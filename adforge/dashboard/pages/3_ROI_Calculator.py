@@ -1,4 +1,5 @@
 """ROI Calculator page — the 'was it worth it?' verdict."""
+
 from __future__ import annotations
 
 import html
@@ -243,9 +244,7 @@ with m7:
     af_metric("Blended CTR", f"{blended_ctr * 100:.2f}%")
 
 if recommendation == "SCALE":
-    af_note(
-        "Campaign is profitable. Increase budget 20-50% on the best-performing channel."
-    )
+    af_note("Campaign is profitable. Increase budget 20-50% on the best-performing channel.")
 elif recommendation == "OPTIMIZE":
     af_note(
         "Campaign is breakeven-to-positive. Reallocate budget from low ROAS channels "
@@ -273,15 +272,17 @@ af_section("Per-channel breakdown")
 
 chart_data = []
 for b in buckets:
-    chart_data.append({
-        "Channel": b["bucket"],
-        "ROAS": b["roas"],
-        "Spend (USD)": b["spend_usd"],
-        "Revenue (USD)": b["revenue_usd"],
-        "CPA (USD)": b["cpa"],
-        "CTR (%)": b["ctr"] * 100,
-        "Data": "Simulated" if b.get("is_mock") else "Measured",
-    })
+    chart_data.append(
+        {
+            "Channel": b["bucket"],
+            "ROAS": b["roas"],
+            "Spend (USD)": b["spend_usd"],
+            "Revenue (USD)": b["revenue_usd"],
+            "CPA (USD)": b["cpa"],
+            "CTR (%)": b["ctr"] * 100,
+            "Data": "Simulated" if b.get("is_mock") else "Measured",
+        }
+    )
 
 df = pd.DataFrame(chart_data)
 
@@ -305,7 +306,11 @@ _verdict_colors = {
 }
 
 fig = px.bar(
-    df, x="Channel", y="ROAS", color="Verdict", title="ROAS by channel",
+    df,
+    x="Channel",
+    y="ROAS",
+    color="Verdict",
+    title="ROAS by channel",
     color_discrete_map=_verdict_colors,
 )
 fig.update_layout(showlegend=False, **_LAYOUT)
@@ -314,8 +319,11 @@ st.plotly_chart(fig, use_container_width=True)
 af_caption("Scale ≥ 4.0x · Optimize ≥ 2.0x · Pause ≥ 1.0x · Kill < 1.0x")
 
 fig2 = px.bar(
-    df, x="Channel", y=["Spend (USD)", "Revenue (USD)"],
-    title="Spend vs revenue by channel", barmode="group",
+    df,
+    x="Channel",
+    y=["Spend (USD)", "Revenue (USD)"],
+    title="Spend vs revenue by channel",
+    barmode="group",
     color_discrete_map={"Spend (USD)": "#94A3B8", "Revenue (USD)": ACCENT},
 )
 fig2.update_layout(**_LAYOUT)
@@ -339,13 +347,19 @@ if _ts_error:
     af_note(f"<b>Failed to load time series.</b> {html.escape(_ts_error)}", "warn")
 elif not df_ts.empty:
     fig3 = px.line(
-        df_ts, x="captured_at", y="spend_usd", color="channel",
+        df_ts,
+        x="captured_at",
+        y="spend_usd",
+        color="channel",
         title="Daily spend by channel",
     )
     fig3.update_layout(**_LAYOUT)
     st.plotly_chart(fig3, use_container_width=True)
     fig4 = px.line(
-        df_ts, x="captured_at", y="roas", color="channel",
+        df_ts,
+        x="captured_at",
+        y="roas",
+        color="channel",
         title="Daily ROAS by channel",
     )
     fig4.update_layout(**_LAYOUT)

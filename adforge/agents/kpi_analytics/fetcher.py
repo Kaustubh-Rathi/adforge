@@ -21,6 +21,7 @@ networking and returns deterministic mock snapshots (``is_mock=true``,
 ``source="mock_<channel>"``) so zero-credential demos can exercise the ROI and
 optimization agents end to end.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -29,13 +30,13 @@ import logging
 import random
 import time
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import httpx
 
 from adforge.config import get_settings
-from adforge.guardrails.contracts import KpiSnapshot
+from adforge.guardrails.contracts import Channel, KpiSnapshot
 from adforge.guardrails.data_isolation import TenantScope
 from adforge.guardrails.rate_limiter import get_rate_limiter
 
@@ -94,7 +95,7 @@ def _ratio(numerator: float, denominator: float) -> float:
 
 def build_snapshot(
     *,
-    channel: str,
+    channel: Channel,
     campaign_id: UUID,
     campaign_external_id: str | None,
     platform_date: date,
@@ -113,11 +114,9 @@ def build_snapshot(
     spend_usd = max(spend_usd, 0.0)
     conversions = max(conversions, 0)
     revenue_usd = max(revenue_usd, 0.0)
-    captured = datetime.combine(
-        platform_date, datetime.min.time(), tzinfo=UTC
-    )
+    captured = datetime.combine(platform_date, datetime.min.time(), tzinfo=UTC)
     return KpiSnapshot(
-        channel=channel,  # type: ignore[arg-type]
+        channel=channel,
         campaign_external_id=campaign_external_id,
         impressions=impressions,
         clicks=clicks,
@@ -161,8 +160,7 @@ async def _google_access_token(client: httpx.AsyncClient) -> str:
     )
     if response.status_code >= 400:
         raise AdPlatformError(
-            f"Google OAuth token refresh failed: HTTP {response.status_code} "
-            f"{response.text[:300]}"
+            f"Google OAuth token refresh failed: HTTP {response.status_code} {response.text[:300]}"
         )
     body = response.json()
     token = body.get("access_token")
@@ -217,8 +215,7 @@ async def fetch_google(
     )
     if response.status_code >= 400:
         raise AdPlatformError(
-            f"Google Ads searchStream failed: HTTP {response.status_code} "
-            f"{response.text[:300]}"
+            f"Google Ads searchStream failed: HTTP {response.status_code} {response.text[:300]}"
         )
 
     payload = response.json()
@@ -283,10 +280,7 @@ async def fetch_meta(
         f"{s.meta_graph_base.rstrip('/')}/{s.meta_graph_api_version}/act_{account}/insights",
         params={
             "level": "campaign",
-            "fields": (
-                "campaign_id,campaign_name,impressions,clicks,spend,"
-                "actions,action_values"
-            ),
+            "fields": ("campaign_id,campaign_name,impressions,clicks,spend,actions,action_values"),
             "time_range": json.dumps({"since": start.isoformat(), "until": end.isoformat()}),
             "time_increment": "1",
             "limit": 500,
@@ -350,8 +344,7 @@ async def fetch_linkedin(
     account_id = ad_account_id or s.linkedin_ad_account_id
     if not (s.linkedin_access_token and account_id):
         raise AdPlatformError(
-            "LinkedIn Ads live mode requires LINKEDIN_ACCESS_TOKEN and "
-            "LINKEDIN_AD_ACCOUNT_ID"
+            "LinkedIn Ads live mode requires LINKEDIN_ACCESS_TOKEN and LINKEDIN_AD_ACCOUNT_ID"
         )
 
     def _tuple(d: date) -> str:
@@ -378,8 +371,7 @@ async def fetch_linkedin(
     )
     if response.status_code >= 400:
         raise AdPlatformError(
-            f"LinkedIn adAnalytics failed: HTTP {response.status_code} "
-            f"{response.text[:300]}"
+            f"LinkedIn adAnalytics failed: HTTP {response.status_code} {response.text[:300]}"
         )
 
     snapshots: list[KpiSnapshot] = []
@@ -501,9 +493,7 @@ _MOCK_AVG_ORDER_VALUE_USD = 50.0
 
 def _mock_rng(tenant_id: str, campaign_id: UUID, channel: str, day: date) -> random.Random:
     seed = int(
-        hashlib.md5(
-            f"{tenant_id}|{campaign_id}|{channel}|{day.isoformat()}".encode()
-        ).hexdigest(),
+        hashlib.md5(f"{tenant_id}|{campaign_id}|{channel}|{day.isoformat()}".encode()).hexdigest(),
         16,
     )
     return random.Random(seed)
@@ -511,7 +501,7 @@ def _mock_rng(tenant_id: str, campaign_id: UUID, channel: str, day: date) -> ran
 
 def _fetch_mock_snapshots(
     scope: TenantScope,
-    channel: str,
+    channel: Channel,
     campaign_id: UUID,
     *,
     start: date,
@@ -582,6 +572,11 @@ async def fetch_channel_snapshots(
     if channel not in ("google", "meta", "linkedin", "tiktok"):
         raise AdPlatformError(f"Unsupported ad channel: {channel}")
 
+    # Narrowed by the guard above; the outer signature stays ``str`` so callers
+    # get an explicit AdPlatformError for an unsupported channel rather than a
+    # type error.
+    validated_channel: Channel = cast("Channel", channel)
+
     settings = get_settings()
     today = datetime.now(UTC).date()
     end = end or today
@@ -595,10 +590,14 @@ async def fetch_channel_snapshots(
             "meta": settings.meta_use_mock,
             "linkedin": settings.linkedin_use_mock,
             "tiktok": settings.tiktok_use_mock,
-        }[channel]
+        }[validated_channel]
         if use_mock:
             return _fetch_mock_snapshots(
-                scope, channel, campaign_id, start=start, end=end,
+                scope,
+                validated_channel,
+                campaign_id,
+                start=start,
+                end=end,
                 budget_usd=budget_usd,
             )
 
@@ -616,23 +615,35 @@ async def fetch_channel_snapshots(
     ) as client:
         if channel == "google":
             return await fetch_google(
-                client, campaign_id=campaign_id, external_id=external_id,
-                start=start, end=end,
+                client,
+                campaign_id=campaign_id,
+                external_id=external_id,
+                start=start,
+                end=end,
             )
         if channel == "meta":
             return await fetch_meta(
-                client, campaign_id=campaign_id, external_id=external_id,
-                start=start, end=end,
+                client,
+                campaign_id=campaign_id,
+                external_id=external_id,
+                start=start,
+                end=end,
             )
         if channel == "linkedin":
             return await fetch_linkedin(
-                client, campaign_id=campaign_id, external_id=external_id,
-                start=start, end=end,
+                client,
+                campaign_id=campaign_id,
+                external_id=external_id,
+                start=start,
+                end=end,
             )
         if channel == "tiktok":
             return await fetch_tiktok(
-                client, campaign_id=campaign_id, external_id=external_id,
-                start=start, end=end,
+                client,
+                campaign_id=campaign_id,
+                external_id=external_id,
+                start=start,
+                end=end,
             )
     raise AdPlatformError(f"Unsupported ad channel: {channel}")
 
@@ -641,9 +652,7 @@ async def fetch_all_channels(
     scope: TenantScope, channel: str, campaign_id: UUID, **kwargs: Any
 ) -> KpiSnapshot | None:
     """Backwards-compatible single-snapshot helper (latest day)."""
-    snapshots = await fetch_channel_snapshots(
-        scope, channel, campaign_id, **kwargs
-    )
+    snapshots = await fetch_channel_snapshots(scope, channel, campaign_id, **kwargs)
     return snapshots[-1] if snapshots else None
 
 

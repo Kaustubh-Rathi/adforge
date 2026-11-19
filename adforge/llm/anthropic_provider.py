@@ -1,4 +1,5 @@
 """Anthropic adapter — swap in by setting LLM_PROVIDER=anthropic."""
+
 from __future__ import annotations
 
 import json
@@ -20,11 +21,13 @@ def _convert_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         function = tool.get("function") or {}
         if not function.get("name"):
             continue
-        converted.append({
-            "name": function["name"],
-            "description": function.get("description", ""),
-            "input_schema": function.get("parameters") or {"type": "object"},
-        })
+        converted.append(
+            {
+                "name": function["name"],
+                "description": function.get("description", ""),
+                "input_schema": function.get("parameters") or {"type": "object"},
+            }
+        )
     return converted
 
 
@@ -36,6 +39,7 @@ class AnthropicProvider(LLMProvider):
         if not self.api_key:
             raise GuardrailError("ANTHROPIC_API_KEY not set — cannot init AnthropicProvider.")
         from anthropic import AsyncAnthropic
+
         self._client = AsyncAnthropic(
             api_key=self.api_key,
             base_url=s.anthropic_base_url,
@@ -60,14 +64,18 @@ class AnthropicProvider(LLMProvider):
             if role == "system":
                 system_msg += str(m.get("content") or "") + "\n"
             elif role == "tool":
-                chat_msgs.append({
-                    "role": "user",
-                    "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": m.get("tool_call_id", ""),
-                        "content": _tool_result_content(m),
-                    }],
-                })
+                chat_msgs.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": m.get("tool_call_id", ""),
+                                "content": _tool_result_content(m),
+                            }
+                        ],
+                    }
+                )
             elif role == "assistant" and m.get("tool_calls"):
                 blocks: list[dict[str, Any]] = []
                 if m.get("content"):
@@ -83,12 +91,14 @@ class AnthropicProvider(LLMProvider):
                         )
                     except ValueError:
                         arguments = {"_raw_arguments": raw_arguments}
-                    blocks.append({
-                        "type": "tool_use",
-                        "id": call.get("id", ""),
-                        "name": function.get("name", ""),
-                        "input": arguments if isinstance(arguments, dict) else {},
-                    })
+                    blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": call.get("id", ""),
+                            "name": function.get("name", ""),
+                            "input": arguments if isinstance(arguments, dict) else {},
+                        }
+                    )
                 chat_msgs.append({"role": "assistant", "content": blocks})
             else:
                 chat_msgs.append(m)

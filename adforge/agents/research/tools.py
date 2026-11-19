@@ -4,6 +4,7 @@ These are thin wrappers that call the AdForge research MCP server
 (see ``adforge/mcp_servers/research``). The MCP server itself backs onto
 Tavily for web search + a small SERP scraper.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -13,9 +14,7 @@ from adforge.guardrails.rate_limiter import get_rate_limiter
 from adforge.mcp_servers.client import get_mcp_tools
 
 
-async def call_research_tool(
-    scope: TenantScope, tool_name: str, **kwargs: Any
-) -> dict[str, Any]:
+async def call_research_tool(scope: TenantScope, tool_name: str, **kwargs: Any) -> dict[str, Any]:
     """Call a tool on the AdForge research MCP server.
 
     The MCP server enforces tenant_id from the X-AdForge-Tenant header —

@@ -12,6 +12,7 @@ Auth:
     must be in the APP_REVIEWER_ALLOWLIST env var. (Empty allowlist = anyone
     can review — only safe in dev.)
 """
+
 from __future__ import annotations
 
 import json
@@ -27,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from adforge.api.deps import get_db, get_tenant
 from adforge.config import get_settings
-from adforge.graph.state import get_compiled_graph, thread_id_for
+from adforge.graph.state import get_compiled_graph, graph_config
 from adforge.publishing import PublishError, publish_approved_campaign
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
@@ -67,7 +68,7 @@ async def _resume_graph(
 ) -> tuple[dict[str, Any], str]:
     """Resume the paused graph and derive the campaign's next status."""
     graph = await get_compiled_graph()
-    config = {"configurable": {"thread_id": thread_id_for(campaign_id)}}
+    config = graph_config(campaign_id)
     resume_payload = {
         "approved": approved,
         "reviewer_email": reviewer_email,
@@ -84,8 +85,7 @@ async def _resume_graph(
         # Rejected again → graph paused for another review round.
         status = "reviewing"
     elif final_state.get("review_status") == "auto_blocked" or (
-        final_state.get("review_status") == "rejected"
-        and final_state.get("revision_count", 0) >= 3
+        final_state.get("review_status") == "rejected" and final_state.get("revision_count", 0) >= 3
     ):
         status = "blocked"
     elif approved and final_state.get("review_status") == "approved":
@@ -118,16 +118,12 @@ async def _update_campaign_status(
         )
     else:
         await db.execute(
-            sql_text(
-                "UPDATE campaigns SET status = :status WHERE id = :id AND tenant_id = :tid"
-            ),
+            sql_text("UPDATE campaigns SET status = :status WHERE id = :id AND tenant_id = :tid"),
             {"id": str(campaign_id), "tid": tenant_id, "status": status},
         )
 
 
-async def _assert_campaign_owned(
-    db: AsyncSession, campaign_id: UUID, tenant_id: str
-) -> None:
+async def _assert_campaign_owned(db: AsyncSession, campaign_id: UUID, tenant_id: str) -> None:
     """Refuse to resume a graph for a campaign the caller doesn't own."""
     result = await db.execute(
         sql_text("SELECT 1 FROM campaigns WHERE id = :cid AND tenant_id = :tid"),
@@ -142,9 +138,7 @@ async def _assert_campaign_status(
 ) -> None:
     """Fail closed unless the campaign is in the status this action requires."""
     result = await db.execute(
-        sql_text(
-            "SELECT status FROM campaigns WHERE id = :cid AND tenant_id = :tid"
-        ),
+        sql_text("SELECT status FROM campaigns WHERE id = :cid AND tenant_id = :tid"),
         {"cid": str(campaign_id), "tid": tenant_id},
     )
     row = result.fetchone()
@@ -154,8 +148,7 @@ async def _assert_campaign_status(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"campaign must be {expected!r} for this action "
-                f"(current status: {row.status!r})"
+                f"campaign must be {expected!r} for this action (current status: {row.status!r})"
             ),
         )
 
@@ -207,13 +200,15 @@ async def list_pending_reviews(
     )
     rows = []
     for r in result.fetchall():
-        rows.append({
-            "id": str(r.id),
-            "name": r.name,
-            "brief": r.brief if isinstance(r.brief, dict) else json.loads(r.brief or "{}"),
-            "status": r.status,
-            "started_at": r.started_at.isoformat() if r.started_at else None,
-        })
+        rows.append(
+            {
+                "id": str(r.id),
+                "name": r.name,
+                "brief": r.brief if isinstance(r.brief, dict) else json.loads(r.brief or "{}"),
+                "status": r.status,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+            }
+        )
     return {"pending": rows, "count": len(rows)}
 
 
@@ -226,8 +221,7 @@ async def get_review_packet(
     """Fetch the review packet for a paused campaign — what the reviewer sees."""
     campaign = await db.execute(
         sql_text(
-            "SELECT id, name, status, brief FROM campaigns "
-            "WHERE id = :cid AND tenant_id = :tid"
+            "SELECT id, name, status, brief FROM campaigns WHERE id = :cid AND tenant_id = :tid"
         ),
         {"cid": str(campaign_id), "tid": tenant_id},
     )
@@ -303,12 +297,9 @@ async def approve_campaign(
         "status": status,
         "approval_token_issued": bool(final_state.get("approval_token")),
         "next_step": (
-            "POST /reviews/{campaign_id}/publish to launch via the configured "
-            "publishing adapter"
+            "POST /reviews/{campaign_id}/publish to launch via the configured publishing adapter"
         ),
-        "final_state_keys": [
-            k for k in final_state if not k.startswith("__")
-        ],
+        "final_state_keys": [k for k in final_state if not k.startswith("__")],
     }
 
 
@@ -329,9 +320,7 @@ async def _record_publish_event(
             "eid": str(uuid4()),
             "tid": tenant_id,
             "cid": str(campaign_id),
-            "p": json.dumps(
-                {"reviewer": reviewer_email, "published": results}, default=str
-            ),
+            "p": json.dumps({"reviewer": reviewer_email, "published": results}, default=str),
             "occ": datetime.now(UTC),
         },
     )
@@ -355,10 +344,7 @@ async def publish_campaign(
 
     row = (
         await db.execute(
-            sql_text(
-                "SELECT name, status FROM campaigns "
-                "WHERE id = :cid AND tenant_id = :tid"
-            ),
+            sql_text("SELECT name, status FROM campaigns WHERE id = :cid AND tenant_id = :tid"),
             {"cid": str(campaign_id), "tid": tenant_id},
         )
     ).fetchone()
@@ -367,14 +353,11 @@ async def publish_campaign(
     if row.status != "approved":
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"campaign must be approved before publishing (current status: "
-                f"{row.status})"
-            ),
+            detail=(f"campaign must be approved before publishing (current status: {row.status})"),
         )
 
     graph = await get_compiled_graph()
-    config = {"configurable": {"thread_id": thread_id_for(campaign_id)}}
+    config = graph_config(campaign_id)
     try:
         snapshot = await graph.aget_state(config)
     except Exception as exc:  # noqa: BLE001
@@ -390,9 +373,7 @@ async def publish_campaign(
             detail="no approval token found for this campaign; approve it first",
         )
     if not reviewer_email:
-        raise HTTPException(
-            status_code=403, detail="X-AdForge-Reviewer header is required"
-        )
+        raise HTTPException(status_code=403, detail="X-AdForge-Reviewer header is required")
 
     creative = state.get("creative", {}) or {}
     media_plan = state.get("media_plan", {}) or {}
@@ -424,9 +405,7 @@ async def publish_campaign(
             "started": datetime.now(UTC),
         },
     )
-    await _record_publish_event(
-        db, campaign_id, tenant_id, reviewer_email, results
-    )
+    await _record_publish_event(db, campaign_id, tenant_id, reviewer_email, results)
 
     return {
         "campaign_id": str(campaign_id),
@@ -468,7 +447,5 @@ async def reject_campaign(
         "reviewer": reviewer_email,
         "status": status,
         "routed_to": "creative_strategist (revision)",
-        "final_state_keys": [
-            k for k in final_state if not k.startswith("__")
-        ],
+        "final_state_keys": [k for k in final_state if not k.startswith("__")],
     }

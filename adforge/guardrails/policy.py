@@ -25,7 +25,7 @@ from typing import Any
 
 import yaml
 
-from adforge.guardrails.contracts import ComplianceVerdict
+from adforge.guardrails.contracts import ComplianceVerdict, RiskLevel
 from adforge.guardrails.exceptions import PolicyViolation
 
 
@@ -81,9 +81,7 @@ _DESCRIPTIVE_KEY_MARKERS = (
 )
 
 
-def _collect_targeting_terms(
-    value: Any, *, excluded: bool = False
-) -> list[str]:
+def _collect_targeting_terms(value: Any, *, excluded: bool = False) -> list[str]:
     """Flatten positive audience-targeting strings, skipping non-targeting data.
 
     Media plans legitimately contain entries such as
@@ -132,27 +130,29 @@ class PolicyEnforcer:
             return cls.from_yaml(rules_path)
         # If the YAML isn't there (e.g. running tests in a stripped env),
         # return an enforcer with a minimal hard-coded rule set.
-        return cls(rules=[
-            PolicyRule(
-                rule_id="BLOCK_TOBACCO",
-                tier=1,
-                pattern="tobacco|cigarette|vape",
-                description="Tobacco / nicotine advertising is prohibited on all major ad platforms.",
-            ),
-            PolicyRule(
-                rule_id="DISCLOSE_FINANCIAL",
-                tier=2,
-                pattern="guaranteed return|risk-free investment|crypto|get rich",
-                description="Financial claims require disclosure language per FTC + platform policy.",
-                required_disclosure="Investing involves risk. Past performance is not indicative of future results.",
-            ),
-            PolicyRule(
-                rule_id="WARN_HEALTH",
-                tier=3,
-                pattern="cure|miracle|guaranteed weight loss",
-                description="Health claims require substantiation. Review with legal counsel before launch.",
-            ),
-        ])
+        return cls(
+            rules=[
+                PolicyRule(
+                    rule_id="BLOCK_TOBACCO",
+                    tier=1,
+                    pattern="tobacco|cigarette|vape",
+                    description="Tobacco / nicotine advertising is prohibited on all major ad platforms.",
+                ),
+                PolicyRule(
+                    rule_id="DISCLOSE_FINANCIAL",
+                    tier=2,
+                    pattern="guaranteed return|risk-free investment|crypto|get rich",
+                    description="Financial claims require disclosure language per FTC + platform policy.",
+                    required_disclosure="Investing involves risk. Past performance is not indicative of future results.",
+                ),
+                PolicyRule(
+                    rule_id="WARN_HEALTH",
+                    tier=3,
+                    pattern="cure|miracle|guaranteed weight loss",
+                    description="Health claims require substantiation. Review with legal counsel before launch.",
+                ),
+            ]
+        )
 
     def evaluate(
         self,
@@ -165,7 +165,7 @@ class PolicyEnforcer:
         flagged: list[str] = []
         disclosures: list[str] = []
         blocked: list[str] = []
-        risk = "low"
+        risk: RiskLevel = "low"
 
         for rule in self.rules:
             # Rules are regex alternations (e.g. ``tobacco|cigarette|vape``).
@@ -208,10 +208,12 @@ class PolicyEnforcer:
 
         return ComplianceVerdict(
             approved=approved,
-            risk_level=risk,  # type: ignore[arg-type]
+            risk_level=risk,
             flagged_issues=flagged,
             required_disclosures=disclosures,
-            reviewer_notes="Auto-evaluated by PolicyEnforcer" if approved else "Manual review required",
+            reviewer_notes="Auto-evaluated by PolicyEnforcer"
+            if approved
+            else "Manual review required",
             blocked_terms=blocked,
         )
 

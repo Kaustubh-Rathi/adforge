@@ -1,4 +1,5 @@
 """Z.ai GLM adapter (default LLM provider)."""
+
 from __future__ import annotations
 
 import json
@@ -49,9 +50,7 @@ class ZaiGLMProvider(LLMProvider):
         if tools:
             payload["tools"] = tools
 
-        async with httpx.AsyncClient(
-            timeout=self.timeout, trust_env=False
-        ) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
             resp = await client.post(
                 f"{self.base_url}/chat/completions",
                 json=payload,

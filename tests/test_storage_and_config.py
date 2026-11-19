@@ -4,6 +4,7 @@ the deterministic MCP servers (LinkedIn, ROI, ads, compliance).
 Everything here is unit-level: engines, Redis clients and sessions are faked so
 no external service is required.
 """
+
 from __future__ import annotations
 
 import json
@@ -56,10 +57,7 @@ class TestSettings:
             postgres_port=6543,
             postgres_db="ads",
         )
-        assert (
-            settings.database_url
-            == "postgresql+asyncpg://alice:s3cret@db.internal:6543/ads"
-        )
+        assert settings.database_url == "postgresql+asyncpg://alice:s3cret@db.internal:6543/ads"
 
     def test_explicit_database_url_wins(self):
         explicit = "postgresql+asyncpg://remote:pass@db.example:5432/prod"
@@ -86,9 +84,7 @@ class TestSettings:
         assert settings.redis_url == "redis://:secret@cache.internal:6380/0"
 
     def test_explicit_redis_url_wins(self):
-        settings = Settings(
-            redis_url="redis://explicit:6379/5", redis_host="ignored", redis_port=1
-        )
+        settings = Settings(redis_url="redis://explicit:6379/5", redis_host="ignored", redis_port=1)
         assert settings.redis_url == "redis://explicit:6379/5"
 
     @staticmethod
@@ -209,9 +205,7 @@ class TestSessionModule:
             "max_overflow": 20,
             "pool_pre_ping": True,
         }
-        assert maker_calls == [
-            (fake_engine, {"class_": AsyncSession, "expire_on_commit": False})
-        ]
+        assert maker_calls == [(fake_engine, {"class_": AsyncSession, "expire_on_commit": False})]
         assert session_module._engine is fake_engine
         assert session_module._session_factory is fake_factory
 
@@ -225,9 +219,7 @@ class TestSessionModule:
 
         monkeypatch.setattr(session_module, "_session_factory", None)
         monkeypatch.setattr(session_module, "init_engine", fake_init_engine)
-        monkeypatch.setattr(
-            session_module, "get_session_factory", _REAL_GET_SESSION_FACTORY
-        )
+        monkeypatch.setattr(session_module, "get_session_factory", _REAL_GET_SESSION_FACTORY)
 
         assert session_module.get_session_factory() is sentinel
         assert init_calls == [True]
@@ -240,9 +232,7 @@ class TestSessionModule:
 
         monkeypatch.setattr(session_module, "_session_factory", sentinel)
         monkeypatch.setattr(session_module, "init_engine", fail_init_engine)
-        monkeypatch.setattr(
-            session_module, "get_session_factory", _REAL_GET_SESSION_FACTORY
-        )
+        monkeypatch.setattr(session_module, "get_session_factory", _REAL_GET_SESSION_FACTORY)
 
         assert session_module.get_session_factory() is sentinel
 
@@ -340,9 +330,7 @@ class TestRedisClient:
     async def test_get_redis_async_is_an_alias(self, monkeypatch):
         fake = FakeRedis()
         monkeypatch.setattr(redis_module, "_redis", None)
-        monkeypatch.setattr(
-            redis_module.redis, "from_url", lambda url, **kwargs: fake
-        )
+        monkeypatch.setattr(redis_module.redis, "from_url", lambda url, **kwargs: fake)
 
         assert await redis_module.get_redis_async() is fake
         assert await redis_module.get_redis() is fake
@@ -414,9 +402,7 @@ class TestSeed:
         path.write_text(json.dumps(examples), encoding="utf-8")
         return path
 
-    async def test_seed_inserts_campaign_and_kpis_then_disposes(
-        self, monkeypatch, tmp_path
-    ):
+    async def test_seed_inserts_campaign_and_kpis_then_disposes(self, monkeypatch, tmp_path):
         session = RecordingSession()
         calls = {"init": 0, "dispose": 0}
 
@@ -446,18 +432,14 @@ class TestSeed:
         assert calls == {"init": 1, "dispose": 1}
 
         campaign_params = next(
-            params
-            for sql, params in session.executions
-            if "INSERT INTO campaigns" in sql
+            params for sql, params in session.executions if "INSERT INTO campaigns" in sql
         )
         assert campaign_params is not None
         assert campaign_params["tid"] == "tenant_seed"
         assert campaign_params["name"] == "Seed Campaign"
 
         kpi_channels = {
-            params["ch"]
-            for sql, params in session.executions
-            if "INSERT INTO kpi_snapshots" in sql
+            params["ch"] for sql, params in session.executions if "INSERT INTO kpi_snapshots" in sql
         }
         assert kpi_channels == {"google", "meta"}
 
@@ -512,9 +494,7 @@ class TestApiMain:
         ("app_env", "expected_reload"),
         [("dev", True), ("test", False), ("prod", False)],
     )
-    def test_run_passes_host_port_and_reload(
-        self, monkeypatch, app_env, expected_reload
-    ):
+    def test_run_passes_host_port_and_reload(self, monkeypatch, app_env, expected_reload):
         from adforge.api import main as api_main
 
         env = {"APP_ENV": app_env, "API_HOST": "127.0.0.2", "API_PORT": "8123"}
@@ -588,9 +568,7 @@ class TestLinkedInMcp:
                 json={
                     "elements": [
                         {
-                            "dateRange": {
-                                "start": {"year": 2026, "month": 1, "day": 2}
-                            },
+                            "dateRange": {"start": {"year": 2026, "month": 1, "day": 2}},
                             "impressions": 100,
                             "clicks": 10,
                             "costInLocalCurrency": "5.0",
@@ -654,26 +632,20 @@ class TestRoiMcp:
 
     async def test_compute_payback_period_success(self):
         data = json.loads(
-            await roi.compute_payback_period(
-                cac_usd=100.0, ltv_usd=1000.0, gross_margin_pct=50.0
-            )
+            await roi.compute_payback_period(cac_usd=100.0, ltv_usd=1000.0, gross_margin_pct=50.0)
         )
         # daily profit = 1000 * 0.5 / 365; 100 / that = 73.0 days
         assert data["payback_period_days"] == pytest.approx(73.0)
 
     async def test_compute_payback_period_invalid_ltv(self):
         data = json.loads(
-            await roi.compute_payback_period(
-                cac_usd=100.0, ltv_usd=0.0, gross_margin_pct=50.0
-            )
+            await roi.compute_payback_period(cac_usd=100.0, ltv_usd=0.0, gross_margin_pct=50.0)
         )
         assert "error" in data
 
     async def test_compute_payback_period_invalid_margin(self):
         data = json.loads(
-            await roi.compute_payback_period(
-                cac_usd=100.0, ltv_usd=1000.0, gross_margin_pct=0.0
-            )
+            await roi.compute_payback_period(cac_usd=100.0, ltv_usd=1000.0, gross_margin_pct=0.0)
         )
         assert "error" in data
 
@@ -689,12 +661,8 @@ class TestRoiMcp:
             (0.99, None, "kill"),
         ],
     )
-    async def test_classify_recommendation_boundaries(
-        self, roas, payback_days, expected
-    ):
-        data = json.loads(
-            await roi.classify_recommendation(roas=roas, payback_days=payback_days)
-        )
+    async def test_classify_recommendation_boundaries(self, roas, payback_days, expected):
+        data = json.loads(await roi.classify_recommendation(roas=roas, payback_days=payback_days))
         assert data["recommendation"] == expected
         assert data["roas"] == roas
         assert data["payback_days"] == payback_days
@@ -720,9 +688,7 @@ class TestAdsMcp:
     @pytest.fixture(autouse=True)
     def _write_gateway(self, monkeypatch):
         monkeypatch.setenv("ADFORGE_ENABLE_LIVE_WRITES", "true")
-        monkeypatch.setenv(
-            "ADFORGE_PUBLISH_WEBHOOK_URL", "https://ads.example.test/hook"
-        )
+        monkeypatch.setenv("ADFORGE_PUBLISH_WEBHOOK_URL", "https://ads.example.test/hook")
         get_settings.cache_clear()
         yield
         get_settings.cache_clear()
@@ -901,9 +867,7 @@ class TestComplianceMcp:
         assert data == {"error": "missing tenant header"}
 
     async def test_list_blocked_terms(self):
-        data = json.loads(
-            await compliance.list_blocked_terms(headers={"X-AdForge-Tenant": "acme"})
-        )
+        data = json.loads(await compliance.list_blocked_terms(headers={"X-AdForge-Tenant": "acme"}))
         rule_ids = {rule["rule_id"] for rule in data["blocked"]}
 
         assert len(data["blocked"]) >= 4

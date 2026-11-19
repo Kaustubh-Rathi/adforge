@@ -1,4 +1,5 @@
 """Optimization Loop agent node."""
+
 from __future__ import annotations
 
 import json
@@ -17,9 +18,15 @@ class OptimizationAgent(BaseAgent):
     mcp_servers = ("analytics", "roi")
 
     def build_messages(self, agent_input: AgentInput) -> list[dict[str, str]]:
-        kpis = json.dumps(agent_input.upstream_payloads.get("kpi_analytics", {}), indent=2, default=str)
-        roi = json.dumps(agent_input.upstream_payloads.get("roi_calculator", {}), indent=2, default=str)
-        media_plan = json.dumps(agent_input.upstream_payloads.get("media_plan", {}), indent=2, default=str)
+        kpis = json.dumps(
+            agent_input.upstream_payloads.get("kpi_analytics", {}), indent=2, default=str
+        )
+        roi = json.dumps(
+            agent_input.upstream_payloads.get("roi_calculator", {}), indent=2, default=str
+        )
+        media_plan = json.dumps(
+            agent_input.upstream_payloads.get("media_plan", {}), indent=2, default=str
+        )
 
         return [
             {"role": "system", "content": self.persona},
@@ -29,7 +36,7 @@ class OptimizationAgent(BaseAgent):
                     f"Media plan:\n{media_plan}\n\n"
                     f"Live KPIs:\n{kpis}\n\n"
                     f"ROI report:\n{roi}\n\n"
-                    "Produce a JSON object: {\"suggestions\": [OptimizationSuggestion, ...]}. "
+                    'Produce a JSON object: {"suggestions": [OptimizationSuggestion, ...]}. '
                     "Max 3 suggestions. Sum of delta_pct * budget should approximate zero."
                     f"{schema_instruction(OptimizationSuggestion, array_key='suggestions')}"
                 ),

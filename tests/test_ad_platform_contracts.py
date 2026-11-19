@@ -69,9 +69,7 @@ def _creds(monkeypatch) -> None:
 async def test_google_search_stream_contract(monkeypatch):
     _creds(monkeypatch)
     respx.post("https://oauth.example.test/token").mock(
-        return_value=httpx.Response(
-            200, json={"access_token": "google-access", "expires_in": 3600}
-        )
+        return_value=httpx.Response(200, json={"access_token": "google-access", "expires_in": 3600})
     )
     search = respx.post(
         "https://google.example.test/v99/customers/1234567890/googleAds:searchStream"
@@ -105,9 +103,9 @@ async def test_google_search_stream_contract(monkeypatch):
 @respx.mock
 async def test_meta_insights_contract(monkeypatch):
     _creds(monkeypatch)
-    route = respx.get(
-        "https://meta.example.test/v99.0/act_456/insights"
-    ).mock(return_value=httpx.Response(200, json=_fixture("meta_insights.json")))
+    route = respx.get("https://meta.example.test/v99.0/act_456/insights").mock(
+        return_value=httpx.Response(200, json=_fixture("meta_insights.json"))
+    )
 
     async with httpx.AsyncClient() as client:
         rows = await fetch_meta(
@@ -141,9 +139,9 @@ async def test_meta_insights_contract(monkeypatch):
 @respx.mock
 async def test_linkedin_ad_analytics_contract(monkeypatch):
     _creds(monkeypatch)
-    route = respx.get(
-        "https://linkedin.example.test/rest/adAnalytics"
-    ).mock(return_value=httpx.Response(200, json=_fixture("linkedin_ad_analytics.json")))
+    route = respx.get("https://linkedin.example.test/rest/adAnalytics").mock(
+        return_value=httpx.Response(200, json=_fixture("linkedin_ad_analytics.json"))
+    )
 
     async with httpx.AsyncClient() as client:
         rows = await fetch_linkedin(
@@ -175,9 +173,9 @@ async def test_linkedin_ad_analytics_contract(monkeypatch):
 @respx.mock
 async def test_tiktok_report_contract(monkeypatch):
     _creds(monkeypatch)
-    route = respx.get(
-        "https://tiktok.example.test/open_api/v9.9/report/integrated/get/"
-    ).mock(return_value=httpx.Response(200, json=_fixture("tiktok_report.json")))
+    route = respx.get("https://tiktok.example.test/open_api/v9.9/report/integrated/get/").mock(
+        return_value=httpx.Response(200, json=_fixture("tiktok_report.json"))
+    )
 
     async with httpx.AsyncClient() as client:
         rows = await fetch_tiktok(
@@ -228,9 +226,7 @@ async def test_webhook_publish_fixture_drives_write_gateway(monkeypatch):
     from adforge.mcp_servers.ads import writes
 
     monkeypatch.setenv("ADFORGE_ENABLE_LIVE_WRITES", "true")
-    monkeypatch.setenv(
-        "ADFORGE_PUBLISH_WEBHOOK_URL", "https://adapter.example.test/publish"
-    )
+    monkeypatch.setenv("ADFORGE_PUBLISH_WEBHOOK_URL", "https://adapter.example.test/publish")
     get_settings.cache_clear()
     route = respx.post("https://adapter.example.test/publish").mock(
         return_value=httpx.Response(200, json=_fixture("webhook_publish.json"))

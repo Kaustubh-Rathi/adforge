@@ -1,7 +1,9 @@
 """AdForge FastAPI main app."""
+
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -17,7 +19,7 @@ logger = logging.getLogger("adforge.api")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialise / dispose singletons on app start / stop."""
     settings = get_settings()
     init_engine(echo=settings.app_env == "dev")
@@ -36,18 +38,19 @@ app = FastAPI(
 )
 
 _settings = get_settings()
-_origins = [
-    origin.strip()
-    for origin in _settings.app_cors_origins.split(",")
-    if origin.strip()
-]
+_origins = [origin.strip() for origin in _settings.app_cors_origins.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
     allow_credentials=bool(_origins),
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-AdForge-Tenant", "X-AdForge-Campaign",
-                   "X-AdForge-Reviewer", "X-API-Key"],
+    allow_headers=[
+        "Content-Type",
+        "X-AdForge-Tenant",
+        "X-AdForge-Campaign",
+        "X-AdForge-Reviewer",
+        "X-API-Key",
+    ],
 )
 
 app.include_router(campaigns.router)

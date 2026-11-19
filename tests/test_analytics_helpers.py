@@ -3,6 +3,7 @@
 MCP callers send JSON, so dates/timestamps arrive as strings while asyncpg
 requires real ``date``/``datetime`` objects. These pin that coercion contract.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime

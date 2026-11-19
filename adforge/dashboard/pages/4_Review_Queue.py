@@ -5,6 +5,7 @@ Shows campaigns paused at the human_review interrupt. Reviewer can:
   - Approve (resumes graph, issues approval token for write MCP tools)
   - Reject (routes graph back to creative_strategist with reviewer comments)
 """
+
 from __future__ import annotations
 
 import html
@@ -35,7 +36,7 @@ def _esc(value: Any) -> str:
 
 
 def _doc(title: str, rows_html: str, head_badge: str = "") -> str:
-    badge_html = f'<div>{head_badge}</div>' if head_badge else ""
+    badge_html = f"<div>{head_badge}</div>" if head_badge else ""
     return (
         '<div class="af-doc">'
         f'<div class="af-doc-head"><div class="af-doc-title">{_esc(title)}</div>{badge_html}</div>'
@@ -127,7 +128,7 @@ except Exception as e:
 creative = _packet_section(packet, "creative", "creative_strategist")
 if creative:
     rows = (
-        _row("Headline", f'<strong>{_esc(creative.get("headline", "(none)"))}</strong>')
+        _row("Headline", f"<strong>{_esc(creative.get('headline', '(none)'))}</strong>")
         + _row("Primary text", _esc(creative.get("primary_text", "(none)")))
         + _row("Call to action", _esc(creative.get("cta", "(none)")))
         + _row("Visual direction", _esc(creative.get("visual_direction", "(none)")))
@@ -144,8 +145,8 @@ if media_plan:
     flight = media_plan.get("flight_dates") or {}
     if isinstance(flight, dict) and flight:
         flight_text = (
-            f'{_esc(flight.get("start", flight.get("start_date", "?")))} to '
-            f'{_esc(flight.get("end", flight.get("end_date", "?")))}'
+            f"{_esc(flight.get('start', flight.get('start_date', '?')))} to "
+            f"{_esc(flight.get('end', flight.get('end_date', '?')))}"
         )
     else:
         flight_text = _esc(flight) if flight else "unknown"
@@ -159,7 +160,7 @@ if media_plan:
     if allocs:
         alloc_rows = "".join(
             "<tr>"
-            f'<td>{_esc(a.get("channel", "?"))}</td>'
+            f"<td>{_esc(a.get('channel', '?'))}</td>"
             f'<td class="af-right">${float(a.get("budget_usd", 0)):,.2f}</td>'
             f'<td class="af-right">${float(a.get("expected_cpc", 0)):.2f}</td>'
             f'<td class="af-right">{float(a.get("expected_cvr", 0)) * 100:.1f}%</td>'
@@ -202,8 +203,9 @@ else:
 
 # --- Reviewer decision ---
 af_section("Your decision", "Approved campaigns resume the graph; rejections return for revision.")
-comments = st.text_area("Comments (will be passed to the next creative revision if rejected)",
-                        value="", height=100)
+comments = st.text_area(
+    "Comments (will be passed to the next creative revision if rejected)", value="", height=100
+)
 
 col1, col2 = st.columns(2)
 with col1:

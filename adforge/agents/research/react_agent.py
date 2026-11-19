@@ -19,9 +19,11 @@ from the research + public_data MCP servers.
 The original ``ResearchAgent`` (single-shot) is kept as a fallback for
 tests where MCP servers aren't running.
 """
+
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
 from typing import Any
 
@@ -30,10 +32,10 @@ from adforge.guardrails.contracts import ResearchFindings
 from adforge.llm.factory import get_llm
 from adforge.mcp_servers.client import get_mcp_tools
 
-_research_tools_cache: list | None = None
+_research_tools_cache: list[Any] | None = None
 
 
-async def _load_research_tools() -> list:
+async def _load_research_tools() -> list[Any]:
     """Load read-only tools from the research + public_data MCP servers.
 
     Returns an empty list if MCP servers are unreachable — caller should
@@ -57,7 +59,7 @@ _load_research_tools.cache_clear = _clear_research_tools_cache  # type: ignore[a
 
 
 @lru_cache
-def _build_react_agent():
+def _build_react_agent() -> Callable[[list[Any]], Awaitable[Any]]:
     """Build the LangChain ReAct agent (create_agent) for research.
 
     Cached at module import. Tests can clear via ``_build_react_agent.cache_clear()``.
@@ -70,12 +72,13 @@ def _build_react_agent():
     # We can't await inside _build_react_agent (it's sync), so we
     # structure this as a factory that returns a coroutine-returning builder.
     # The actual tool loading happens in ``run_react_research`` below.
-    async def _build(tools: list) -> Any:
+    async def _build(tools: list[Any]) -> Any:
         # The langchain[mcp] adapter returns langchain_core.tools.Tool objects.
         # We need an LLM that can bind_tools — wrap our LLMProvider in a
         # minimal LangChain-compatible chat model.
         from adforge.llm.langchain_wrapper import LangChainLLMWrapper
-        wrapped_model = LangChainLLMWrapper(llm)
+
+        wrapped_model = LangChainLLMWrapper(provider=llm)
 
         agent = create_agent(
             model=wrapped_model,
@@ -111,15 +114,18 @@ async def run_react_research(
         from uuid import uuid4
 
         from adforge.agents.research.agent import ResearchAgent
+
         agent = ResearchAgent()
-        result = await agent.run({
-            "request_id": str(uuid4()),
-            "tenant_id": tenant_id,
-            "campaign_id": campaign_id,
-            "agent_name": "research",
-            "brief": None,
-            "upstream_payloads": {},
-        })
+        result = await agent.run(
+            {
+                "request_id": str(uuid4()),
+                "tenant_id": tenant_id,
+                "campaign_id": campaign_id,
+                "agent_name": "research",
+                "brief": None,
+                "upstream_payloads": {},
+            }
+        )
         return result.output.payload
 
     builder = _build_react_agent()
@@ -128,7 +134,10 @@ async def run_react_research(
     # Invoke the ReAct agent
     initial_messages = [
         {"role": "system", "content": PERSONA},
-        {"role": "user", "content": query + "\n\nProduce a ResearchFindings JSON object as your final answer."},
+        {
+            "role": "user",
+            "content": query + "\n\nProduce a ResearchFindings JSON object as your final answer.",
+        },
     ]
     final_state = await agent.ainvoke(
         {"messages": initial_messages},
@@ -152,6 +161,7 @@ async def run_react_research(
     except Exception:
         return {
             "market_summary": body[:500] if body else "ReAct agent produced no parseable output.",
-            "top_keywords": [], "sources": [],
+            "top_keywords": [],
+            "sources": [],
             "_parse_error": "ReAct output not valid JSON",
         }

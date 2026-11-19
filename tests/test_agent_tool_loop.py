@@ -175,9 +175,7 @@ class TestToolExecution:
         assert len(tool_messages) == 1
         assert tool_messages[0]["tool_call_id"] == "call_1"
         assert tool_messages[0]["name"] == "web_search"
-        assert json.loads(tool_messages[0]["content"]) == {
-            "results": [{"title": "A"}]
-        }
+        assert json.loads(tool_messages[0]["content"]) == {"results": [{"title": "A"}]}
 
     async def test_usage_is_aggregated_across_rounds(self, patched_tools):
         patched_tools([FakeTool("web_search")])
@@ -281,14 +279,10 @@ class TestToolExecution:
         result = await agent.run(_input())
 
         assert result.ok is False
-        assert "exceeded the read-only tool-call limit (2 iterations)" in (
-            result.output.error
-        )
+        assert "exceeded the read-only tool-call limit (2 iterations)" in (result.output.error)
         assert len(llm.calls) == 2
 
-    async def test_empty_model_reply_gets_one_nudge_then_fails(
-        self, patched_tools, monkeypatch
-    ):
+    async def test_empty_model_reply_gets_one_nudge_then_fails(self, patched_tools, monkeypatch):
         from adforge.config import get_settings
 
         monkeypatch.setenv("AGENT_MAX_TOOL_ITERATIONS", "2")
@@ -355,9 +349,7 @@ READ_ONLY_TOOL_NAMES = [
 
 class TestEveryReadOnlyToolIsCallable:
     @pytest.mark.parametrize("tool_name", READ_ONLY_TOOL_NAMES)
-    async def test_tool_can_be_invoked_through_the_loop(
-        self, tool_name, patched_tools
-    ):
+    async def test_tool_can_be_invoked_through_the_loop(self, tool_name, patched_tools):
         tool = FakeTool(tool_name, result={"tool": tool_name, "rows": []})
         patched_tools([tool])
         llm = ScriptedLLM(

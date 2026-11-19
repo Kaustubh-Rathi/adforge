@@ -1,4 +1,5 @@
 """Tests for the ReAct research agent and its tool-dispatch helper."""
+
 from __future__ import annotations
 
 import json
@@ -87,9 +88,7 @@ async def test_run_react_research_falls_back_without_tools(monkeypatch):
     async def no_tools():
         return []
 
-    scripted = ScriptedLLM(
-        responses={"Produce a ResearchFindings JSON object": VALID_RESEARCH}
-    )
+    scripted = ScriptedLLM(responses={"Produce a ResearchFindings JSON object": VALID_RESEARCH})
     monkeypatch.setattr(react_agent, "_load_research_tools", no_tools)
     monkeypatch.setattr(agent_base, "get_llm", lambda: scripted)
 

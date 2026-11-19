@@ -1,4 +1,5 @@
 """Tests for the agent layer — message building + response parsing."""
+
 from __future__ import annotations
 
 import json
@@ -53,7 +54,8 @@ class TestResearchAgent:
         inp = _make_input(sample_brief_dict)
         mock = {
             "market_summary": "Test market summary that is at least 10 characters long.",
-            "top_keywords": [], "sources": [],
+            "top_keywords": [],
+            "sources": [],
         }
         fenced = "```json\n" + json.dumps(mock) + "\n```"
         payload = agent.parse_response(fenced, inp)
@@ -93,15 +95,24 @@ class TestComplianceAgent:
         agent = ComplianceAgent()
         inp = _make_input(
             sample_brief_dict,
-            upstream={"creative": {"headline": "Buy cigarettes cheap",
-                                    "primary_text": "Best tobacco deals",
-                                    "cta": "Buy now"},
-                      "media_plan": {"audience_targeting": {}}},
+            upstream={
+                "creative": {
+                    "headline": "Buy cigarettes cheap",
+                    "primary_text": "Best tobacco deals",
+                    "cta": "Buy now",
+                },
+                "media_plan": {"audience_targeting": {}},
+            },
         )
         # LLM says approved; PolicyEnforcer should override.
-        llm_output = {"approved": True, "risk_level": "low",
-                       "flagged_issues": [], "required_disclosures": [],
-                       "reviewer_notes": "Looks fine.", "blocked_terms": []}
+        llm_output = {
+            "approved": True,
+            "risk_level": "low",
+            "flagged_issues": [],
+            "required_disclosures": [],
+            "reviewer_notes": "Looks fine.",
+            "blocked_terms": [],
+        }
         payload = agent.parse_response(json.dumps(llm_output), inp)
         assert payload["approved"] is False
         assert payload["risk_level"] == "critical"
@@ -112,9 +123,13 @@ class TestRoiCalculatorAgent:
         agent = RoiCalculatorAgent()
         inp = _make_input(sample_brief_dict)
         mock = {
-            "total_spend_usd": 5000, "total_revenue_usd": 15000,
-            "total_conversions": 50, "blended_roas": 3.0, "blended_cpa": 100,
-            "net_profit_usd": 10000, "recommendation": "optimize",
+            "total_spend_usd": 5000,
+            "total_revenue_usd": 15000,
+            "total_conversions": 50,
+            "blended_roas": 3.0,
+            "blended_cpa": 100,
+            "net_profit_usd": 10000,
+            "recommendation": "optimize",
             "rationale": "Google drove 80% of conversions; LinkedIn underperformed. Reallocate budget.",
             "per_channel_breakdown": [{"channel": "google", "roas": 4.2}],
         }
@@ -127,19 +142,37 @@ class TestOptimizationAgent:
     def test_parse_response_caps_to_three_suggestions(self, sample_brief_dict):
         agent = OptimizationAgent()
         inp = _make_input(sample_brief_dict)
-        mock = {"suggestions": [
-            {"channel": "google", "action": "increase_budget", "delta_pct": 0.20,
-             "rationale": "ROAS 4.5x, CPA below target.",
-             "expected_impact": {"cpa": "-12%", "roas": "+18%"}},
-            {"channel": "linkedin", "action": "pause", "delta_pct": -1.0,
-             "rationale": "ROAS 0.3x, burning budget.",
-             "expected_impact": {"spend": "-100%"}},
-            {"channel": "meta", "action": "rotate_creative", "delta_pct": 0.0,
-             "rationale": "CTR dropped 45% WoW.",
-             "expected_impact": {"ctr": "+20%"}},
-            {"channel": "tiktok", "action": "scale", "delta_pct": 0.50,
-             "rationale": "Viral hook, scaling.",
-             "expected_impact": {"reach": "+200%"}},
-        ]}
+        mock = {
+            "suggestions": [
+                {
+                    "channel": "google",
+                    "action": "increase_budget",
+                    "delta_pct": 0.20,
+                    "rationale": "ROAS 4.5x, CPA below target.",
+                    "expected_impact": {"cpa": "-12%", "roas": "+18%"},
+                },
+                {
+                    "channel": "linkedin",
+                    "action": "pause",
+                    "delta_pct": -1.0,
+                    "rationale": "ROAS 0.3x, burning budget.",
+                    "expected_impact": {"spend": "-100%"},
+                },
+                {
+                    "channel": "meta",
+                    "action": "rotate_creative",
+                    "delta_pct": 0.0,
+                    "rationale": "CTR dropped 45% WoW.",
+                    "expected_impact": {"ctr": "+20%"},
+                },
+                {
+                    "channel": "tiktok",
+                    "action": "scale",
+                    "delta_pct": 0.50,
+                    "rationale": "Viral hook, scaling.",
+                    "expected_impact": {"reach": "+200%"},
+                },
+            ]
+        }
         payload = agent.parse_response(json.dumps(mock), inp)
         assert len(payload["suggestions"]) == 3  # capped

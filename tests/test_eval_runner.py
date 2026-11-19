@@ -1,4 +1,5 @@
 """Tests for the agent eval runner's metric guards and live execution path."""
+
 from __future__ import annotations
 
 import sys

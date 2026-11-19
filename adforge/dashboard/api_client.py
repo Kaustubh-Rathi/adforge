@@ -1,8 +1,9 @@
 """Shared Streamlit helpers — talk to the AdForge API."""
+
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pandas as pd
@@ -54,8 +55,7 @@ def tenant_switcher() -> None:
         "Tenant",
         options=options,
         key="tenant",
-        help="Every API call is scoped to this tenant; the API rejects reads "
-        "outside it.",
+        help="Every API call is scoped to this tenant; the API rejects reads outside it.",
     )
 
 
@@ -73,16 +73,18 @@ def list_campaigns() -> list[dict[str, Any]]:
         f"{API_BASE}/campaigns", headers=_headers(), timeout=_HTTP_TIMEOUT, trust_env=False
     )
     r.raise_for_status()
-    return r.json()
+    return cast("list[dict[str, Any]]", r.json())
 
 
 def get_campaign(campaign_id: str) -> dict[str, Any]:
     r = httpx.get(
         f"{API_BASE}/campaigns/{campaign_id}",
-        headers=_headers(), timeout=_HTTP_TIMEOUT, trust_env=False,
+        headers=_headers(),
+        timeout=_HTTP_TIMEOUT,
+        trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def create_campaign(name: str, brief: dict[str, Any]) -> dict[str, Any]:
@@ -94,7 +96,7 @@ def create_campaign(name: str, brief: dict[str, Any]) -> dict[str, Any]:
         trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def run_campaign(campaign_id: str) -> dict[str, Any]:
@@ -105,29 +107,34 @@ def run_campaign(campaign_id: str) -> dict[str, Any]:
         trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def get_kpis(campaign_id: str, days_back: int = 30, channel: str | None = None) -> dict[str, Any]:
-    params = {"days_back": days_back}
+    params: dict[str, Any] = {"days_back": days_back}
     if channel:
         params["channel"] = channel
     r = httpx.get(
         f"{API_BASE}/kpis/{campaign_id}/snapshots",
-        params=params, headers=_headers(), timeout=_HTTP_TIMEOUT, trust_env=False,
+        params=params,
+        headers=_headers(),
+        timeout=_HTTP_TIMEOUT,
+        trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def get_aggregated_kpis(campaign_id: str, group_by: str = "channel") -> dict[str, Any]:
     r = httpx.get(
         f"{API_BASE}/kpis/{campaign_id}/aggregate",
         params={"group_by": group_by},
-        headers=_headers(), timeout=_HTTP_TIMEOUT, trust_env=False,
+        headers=_headers(),
+        timeout=_HTTP_TIMEOUT,
+        trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def get_agent_runs(campaign_id: str, agent_name: str | None = None) -> dict[str, Any]:
@@ -136,10 +143,13 @@ def get_agent_runs(campaign_id: str, agent_name: str | None = None) -> dict[str,
         params["agent_name"] = agent_name
     r = httpx.get(
         f"{API_BASE}/traces/{campaign_id}/runs",
-        params=params, headers=_headers(), timeout=_HTTP_TIMEOUT, trust_env=False,
+        params=params,
+        headers=_headers(),
+        timeout=_HTTP_TIMEOUT,
+        trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def get_audit_events(campaign_id: str, event_type: str | None = None) -> dict[str, Any]:
@@ -148,29 +158,35 @@ def get_audit_events(campaign_id: str, event_type: str | None = None) -> dict[st
         params["event_type"] = event_type
     r = httpx.get(
         f"{API_BASE}/traces/{campaign_id}/audit",
-        params=params, headers=_headers(), timeout=_HTTP_TIMEOUT, trust_env=False,
+        params=params,
+        headers=_headers(),
+        timeout=_HTTP_TIMEOUT,
+        trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 # --- v0.2: HITL review endpoints ---
+
 
 def list_pending_reviews() -> dict[str, Any]:
     r = httpx.get(
         f"{API_BASE}/reviews/pending", headers=_headers(), timeout=_HTTP_TIMEOUT, trust_env=False
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def get_review_packet(campaign_id: str) -> dict[str, Any]:
     r = httpx.get(
-        f"{API_BASE}/reviews/{campaign_id}/packet", headers=_headers(), timeout=_HTTP_TIMEOUT,
+        f"{API_BASE}/reviews/{campaign_id}/packet",
+        headers=_headers(),
+        timeout=_HTTP_TIMEOUT,
         trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def approve_campaign(campaign_id: str, comments: str, reviewer_email: str) -> dict[str, Any]:
@@ -182,7 +198,7 @@ def approve_campaign(campaign_id: str, comments: str, reviewer_email: str) -> di
         trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def reject_campaign(campaign_id: str, comments: str, reviewer_email: str) -> dict[str, Any]:
@@ -194,7 +210,7 @@ def reject_campaign(campaign_id: str, comments: str, reviewer_email: str) -> dic
         trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def publish_campaign(campaign_id: str, reviewer_email: str) -> dict[str, Any]:
@@ -206,7 +222,7 @@ def publish_campaign(campaign_id: str, reviewer_email: str) -> dict[str, Any]:
         trust_env=False,
     )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
 def kpis_to_df(kpis: dict[str, Any]) -> pd.DataFrame:

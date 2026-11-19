@@ -1,4 +1,5 @@
 """Traces API — read agent runs + audit events for the dashboard's trace page."""
+
 from __future__ import annotations
 
 import json
@@ -47,22 +48,29 @@ async def list_agent_runs(
         )
     rows = []
     for r in result.fetchall():
-        rows.append({
-            "id": str(r.id),
-            "request_id": str(r.request_id),
-            "agent_name": r.agent_name,
-            "input_payload": r.input_payload if isinstance(r.input_payload, dict) else json.loads(r.input_payload or "{}"),
-            "output_payload": r.output_payload if isinstance(r.output_payload, dict) else json.loads(r.output_payload or "{}"),
-            "usage": r.usage if isinstance(r.usage, dict) else json.loads(r.usage or "{}"),
-            "error": r.error,
-            "status": r.status,
-            "started_at": r.started_at.isoformat() if r.started_at else None,
-            "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-            "duration_seconds": (
-                (r.finished_at - r.started_at).total_seconds()
-                if r.finished_at and r.started_at else None
-            ),
-        })
+        rows.append(
+            {
+                "id": str(r.id),
+                "request_id": str(r.request_id),
+                "agent_name": r.agent_name,
+                "input_payload": r.input_payload
+                if isinstance(r.input_payload, dict)
+                else json.loads(r.input_payload or "{}"),
+                "output_payload": r.output_payload
+                if isinstance(r.output_payload, dict)
+                else json.loads(r.output_payload or "{}"),
+                "usage": r.usage if isinstance(r.usage, dict) else json.loads(r.usage or "{}"),
+                "error": r.error,
+                "status": r.status,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+                "duration_seconds": (
+                    (r.finished_at - r.started_at).total_seconds()
+                    if r.finished_at and r.started_at
+                    else None
+                ),
+            }
+        )
     return {"runs": rows, "count": len(rows)}
 
 
@@ -97,12 +105,16 @@ async def list_audit_events(
         )
     rows = []
     for r in result.fetchall():
-        rows.append({
-            "event_id": str(r.event_id),
-            "event_type": r.event_type,
-            "agent_name": r.agent_name,
-            "request_id": str(r.request_id) if r.request_id else None,
-            "payload": r.payload if isinstance(r.payload, dict) else json.loads(r.payload or "{}"),
-            "occurred_at": r.occurred_at.isoformat() if r.occurred_at else None,
-        })
+        rows.append(
+            {
+                "event_id": str(r.event_id),
+                "event_type": r.event_type,
+                "agent_name": r.agent_name,
+                "request_id": str(r.request_id) if r.request_id else None,
+                "payload": r.payload
+                if isinstance(r.payload, dict)
+                else json.loads(r.payload or "{}"),
+                "occurred_at": r.occurred_at.isoformat() if r.occurred_at else None,
+            }
+        )
     return {"events": rows, "count": len(rows)}

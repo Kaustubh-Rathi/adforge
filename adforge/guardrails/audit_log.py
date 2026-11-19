@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("adforge.audit")
 
 
-class AuditEventType(str, Enum):
+class AuditEventType(StrEnum):
     AGENT_START = "agent.start"
     AGENT_END = "agent.end"
     AGENT_ERROR = "agent.error"

@@ -1,4 +1,5 @@
 """Tests for the LangChain-compatible wrapper around LLMProvider."""
+
 from __future__ import annotations
 
 import json
@@ -45,19 +46,23 @@ async def test_agenerate_converts_langchain_messages():
     llm = ScriptedLLM(default=VALID_RESEARCH)
     wrapper = LangChainLLMWrapper(provider=llm)
 
-    result = await wrapper._agenerate_internal([
-        SystemMessage(content="system prompt"),
-        HumanMessage(content="user prompt"),
-        AIMessage(content="assistant reply"),
-        ToolMessage(content="tool output", tool_call_id="call-1"),
-    ])
+    result = await wrapper._agenerate_internal(
+        [
+            SystemMessage(content="system prompt"),
+            HumanMessage(content="user prompt"),
+            AIMessage(content="assistant reply"),
+            ToolMessage(content="tool output", tool_call_id="call-1"),
+        ]
+    )
 
-    assert llm.calls == [[
-        {"role": "system", "content": "system prompt"},
-        {"role": "user", "content": "user prompt"},
-        {"role": "assistant", "content": "assistant reply"},
-        {"role": "user", "content": "tool output"},
-    ]]
+    assert llm.calls == [
+        [
+            {"role": "system", "content": "system prompt"},
+            {"role": "user", "content": "user prompt"},
+            {"role": "assistant", "content": "assistant reply"},
+            {"role": "user", "content": "tool output"},
+        ]
+    ]
     message = result.generations[0].message
     assert isinstance(message, AIMessage)
     assert json.loads(message.content) == VALID_RESEARCH

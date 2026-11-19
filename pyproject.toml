@@ -72,13 +72,15 @@ dev = [
     "fakeredis>=2.24.0",
     "curl_cffi>=0.7.0",
     "embedded-postgres>=18.0.0",
-    "ruff>=0.6.0",
+    # Pinned to a minor series: ruff's formatter output changes between
+    # releases, and a floating version turns CI into a formatting coin-flip.
+    "ruff>=0.17.3,<0.18",
     "mypy>=1.11.0",
 ]
 
 [project.scripts]
 adforge-api = "adforge.api.main:run"
-adforge-dashboard = "adforge.dashboard.app:run"
+adforge-dashboard = "adforge.dashboard.run:run"
 adforge-mcp = "adforge.mcp_servers.runner:run"
 adforge-seed = "adforge.storage.seed:run"
 
@@ -105,6 +107,13 @@ known-first-party = ["adforge"]
 # the entrypoint is Overview.py (capital O) on purpose. Renaming it to
 # overview.py would ship a lowercase nav label.
 "adforge/dashboard/Overview.py" = ["N999"]
+
+# FastAPI's dependency-injection idiom *is* a call in a default argument:
+# ``tenant_id: str = Depends(get_tenant)``. B008 is a false positive here and
+# the framework relies on the pattern, so it is scoped to route modules only —
+# everywhere else a call in a default stays an error.
+"adforge/api/routes/*.py" = ["B008"]
+"adforge/api/deps.py" = ["B008"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

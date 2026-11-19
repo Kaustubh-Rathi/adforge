@@ -22,6 +22,7 @@ Topology:
 State is held in a TypedDict that flows through every node. The Postgres
 checkpointer persists intermediate state so a crashed graph can resume.
 """
+
 from adforge.graph.state import CampaignState, build_graph, get_compiled_graph
 
 __all__ = ["CampaignState", "build_graph", "get_compiled_graph"]

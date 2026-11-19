@@ -1,4 +1,5 @@
 """KPIs API — query KPI snapshots for the dashboard."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -50,24 +51,26 @@ async def list_kpis(
         )
     rows = []
     for r in result.fetchall():
-        rows.append({
-            "id": str(r.id),
-            "channel": r.channel,
-            "campaign_external_id": r.campaign_external_id,
-            "is_mock": bool(r.is_mock),
-            "impressions": r.impressions,
-            "clicks": r.clicks,
-            "spend_usd": float(r.spend_usd),
-            "conversions": r.conversions,
-            "revenue_usd": float(r.revenue_usd),
-            "ctr": float(r.ctr),
-            "cvr": float(r.cvr),
-            "cpc": float(r.cpc),
-            "cpa": float(r.cpa),
-            "cpm": float(r.cpm),
-            "roas": float(r.roas),
-            "captured_at": r.captured_at.isoformat() if r.captured_at else None,
-        })
+        rows.append(
+            {
+                "id": str(r.id),
+                "channel": r.channel,
+                "campaign_external_id": r.campaign_external_id,
+                "is_mock": bool(r.is_mock),
+                "impressions": r.impressions,
+                "clicks": r.clicks,
+                "spend_usd": float(r.spend_usd),
+                "conversions": r.conversions,
+                "revenue_usd": float(r.revenue_usd),
+                "ctr": float(r.ctr),
+                "cvr": float(r.cvr),
+                "cpc": float(r.cpc),
+                "cpa": float(r.cpa),
+                "cpm": float(r.cpm),
+                "roas": float(r.roas),
+                "captured_at": r.captured_at.isoformat() if r.captured_at else None,
+            }
+        )
     return {"snapshots": rows, "count": len(rows)}
 
 
@@ -100,18 +103,20 @@ async def aggregate_kpis(
         conversions = int(r.conversions or 0)
         impressions = int(r.impressions or 0)
         clicks = int(r.clicks or 0)
-        buckets.append({
-            "bucket": r.bucket.isoformat() if hasattr(r.bucket, "isoformat") else r.bucket,
-            "impressions": impressions,
-            "clicks": clicks,
-            "spend_usd": spend,
-            "conversions": conversions,
-            "revenue_usd": revenue,
-            # A bucket mixing simulated and real rows is never reported as real.
-            "is_mock": bool(r.any_mock),
-            "all_simulated": bool(r.all_mock),
-            "roas": round(revenue / spend, 2) if spend else 0.0,
-            "cpa": round(spend / conversions, 2) if conversions else 0.0,
-            "ctr": round(clicks / impressions, 4) if impressions else 0.0,
-        })
+        buckets.append(
+            {
+                "bucket": r.bucket.isoformat() if hasattr(r.bucket, "isoformat") else r.bucket,
+                "impressions": impressions,
+                "clicks": clicks,
+                "spend_usd": spend,
+                "conversions": conversions,
+                "revenue_usd": revenue,
+                # A bucket mixing simulated and real rows is never reported as real.
+                "is_mock": bool(r.any_mock),
+                "all_simulated": bool(r.all_mock),
+                "roas": round(revenue / spend, 2) if spend else 0.0,
+                "cpa": round(spend / conversions, 2) if conversions else 0.0,
+                "ctr": round(clicks / impressions, 4) if impressions else 0.0,
+            }
+        )
     return {"group_by": group_by, "buckets": buckets}

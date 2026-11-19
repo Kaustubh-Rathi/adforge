@@ -7,6 +7,7 @@ deterministic id derived from its tenant + name, and its previous KPI rows are
 cleared first. Without that, every `make seed` would append another copy of
 each campaign and quietly double the demo's figures.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -93,9 +94,14 @@ async def seed() -> None:
                             "        'seed', TRUE, :pdate, :cap)"
                         ),
                         {
-                            "tid": tenant_id, "cid": campaign_id, "ch": channel,
-                            "imp": impressions, "clk": clicks, "spd": spend,
-                            "cnv": conversions, "rev": revenue,
+                            "tid": tenant_id,
+                            "cid": campaign_id,
+                            "ch": channel,
+                            "imp": impressions,
+                            "clk": clicks,
+                            "spd": spend,
+                            "cnv": conversions,
+                            "rev": revenue,
                             "ctr": round(clicks / impressions, 4),
                             "cvr": round(conversions / clicks, 4) if clicks else 0.0,
                             "cpc": round(spend / clicks, 2) if clicks else 0.0,

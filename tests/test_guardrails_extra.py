@@ -95,9 +95,7 @@ class TestApprovalTokens:
         token = permissions.issue_approval_token(
             campaign_id, "publish_campaign", "reviewer+audit@example.com"
         )
-        claims = permissions._verify_approval_claims(
-            token, campaign_id, "publish_campaign"
-        )
+        claims = permissions._verify_approval_claims(token, campaign_id, "publish_campaign")
         assert claims is not None
         assert claims["reviewer_email"] == "reviewer+audit@example.com"
         assert token.split(".")[0] == "v2"
@@ -451,8 +449,7 @@ class TestPolicyEnforcerExtra:
                     "type": "search_intent",
                     "geography": ["United States"],
                     "constraint_notes": (
-                        "No comparison-brand bidding; no targeting on race, "
-                        "ethnicity, or religion."
+                        "No comparison-brand bidding; no targeting on race, ethnicity, or religion."
                     ),
                 },
                 "linkedin": {
@@ -482,8 +479,7 @@ class TestPolicyEnforcerExtra:
                     "targeting_type": "search_intent",
                     "geo": ["United States"],
                     "sensitive_attribute_check": (
-                        "pass - no demographic, health, financial-status or "
-                        "identity targeting set"
+                        "pass - no demographic, health, financial-status or identity targeting set"
                     ),
                 },
                 "linkedin": {
@@ -617,9 +613,7 @@ class TestContractValidation:
     @pytest.mark.parametrize("budget", [float("inf"), float("nan")])
     def test_media_plan_rejects_non_finite_budget(self, budget):
         with pytest.raises(ValidationError):
-            _valid_media_plan(
-                channel_allocations=[{"channel": "google", "budget_usd": budget}]
-            )
+            _valid_media_plan(channel_allocations=[{"channel": "google", "budget_usd": budget}])
 
     def test_media_plan_rejects_duplicate_channels(self):
         with pytest.raises(ValidationError):
@@ -632,9 +626,7 @@ class TestContractValidation:
 
     def test_media_plan_rejects_allocations_over_total(self):
         with pytest.raises(ValidationError):
-            _valid_media_plan(
-                channel_allocations=[{"channel": "google", "budget_usd": 1001.0}]
-            )
+            _valid_media_plan(channel_allocations=[{"channel": "google", "budget_usd": 1001.0}])
 
     def test_campaign_brief_rejects_duplicate_channels(self, sample_brief_dict):
         brief = dict(sample_brief_dict)

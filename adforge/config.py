@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -225,7 +225,7 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def _default_db_url(cls, v: str, info) -> str:
+    def _default_db_url(cls, v: str, info: ValidationInfo) -> str:
         if v:
             return v
         data = info.data
@@ -238,13 +238,15 @@ class Settings(BaseSettings):
 
     @field_validator("redis_url")
     @classmethod
-    def _default_redis_url(cls, v: str, info) -> str:
+    def _default_redis_url(cls, v: str, info: ValidationInfo) -> str:
         if v:
             return v
         data = info.data
         pwd = data.get("redis_password", "")
         auth = f":{pwd}@" if pwd else ""
-        return f"redis://{auth}{data.get('redis_host', 'localhost')}:{data.get('redis_port', 6379)}/0"
+        return (
+            f"redis://{auth}{data.get('redis_host', 'localhost')}:{data.get('redis_port', 6379)}/0"
+        )
 
     @property
     def in_prod(self) -> bool:
@@ -278,12 +280,22 @@ class Settings(BaseSettings):
         if self.app_cors_origins.strip() == "*":
             missing.append("APP_CORS_ORIGINS (explicit origins)")
         if missing:
-            raise ValueError(
-                "Unsafe production configuration: " + ", ".join(missing)
-            )
+            raise ValueError("Unsafe production configuration: " + ", ".join(missing))
         return self
 
-    def mcp_url(self, server: Literal["research", "ads", "analytics", "roi", "compliance", "google_ads_official", "public_data", "linkedin"]) -> str:
+    def mcp_url(
+        self,
+        server: Literal[
+            "research",
+            "ads",
+            "analytics",
+            "roi",
+            "compliance",
+            "google_ads_official",
+            "public_data",
+            "linkedin",
+        ],
+    ) -> str:
         overrides = {
             "research": self.mcp_research_url,
             "ads": self.mcp_ads_url,

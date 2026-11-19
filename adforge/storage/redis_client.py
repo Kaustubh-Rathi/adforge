@@ -1,8 +1,9 @@
 """Async Redis client (singleton). Used by:
-  - guardrails.rate_limiter  (token buckets)
-  - langgraph-checkpoint-redis (agent state persistence)
-  - guardrails.data_isolation (cached tenant contexts)
+- guardrails.rate_limiter  (token buckets)
+- langgraph-checkpoint-redis (agent state persistence)
+- guardrails.data_isolation (cached tenant contexts)
 """
+
 from __future__ import annotations
 
 import redis.asyncio as redis

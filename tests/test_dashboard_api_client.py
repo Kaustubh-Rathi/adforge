@@ -4,6 +4,7 @@ The dashboard is the only consumer of these helpers, and a wrong tenant means
 the demo shows an empty console, so the selection logic is pinned here without
 needing a running Streamlit server.
 """
+
 from __future__ import annotations
 
 import pytest

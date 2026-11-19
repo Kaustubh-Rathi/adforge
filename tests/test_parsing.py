@@ -1,4 +1,5 @@
 """Unit tests for shared JSON extraction + contract validation helpers."""
+
 from __future__ import annotations
 
 import pytest

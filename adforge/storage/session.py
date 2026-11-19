@@ -4,6 +4,7 @@ Single engine per process. Sessions are short-lived, scoped to a single agent
 invocation. The session listener (added below) enforces tenant_id on every
 query — see ``guardrails.data_isolation``.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -35,9 +36,7 @@ def init_engine(echo: bool = False) -> None:
         max_overflow=20,
         pool_pre_ping=True,
     )
-    _session_factory = async_sessionmaker(
-        _engine, class_=AsyncSession, expire_on_commit=False
-    )
+    _session_factory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def dispose_engine() -> None:

@@ -50,6 +50,7 @@ Conventions
   ``.stExpander``, ``[data-testid="stSidebar"]``, ``.block-container``).
   ``:has()`` is deliberately avoided for compatibility.
 """
+
 from __future__ import annotations
 
 import html
@@ -67,13 +68,13 @@ import streamlit as st
 ACCENT = "#176B4F"
 ACCENT_HOVER = "#11533E"
 ACCENT_SOFT = "#E9F2ED"
-HEADING = "#12181F"   # ink
-BODY = "#3B4552"      # slate body copy
-MUTED = "#6B7683"     # labels, captions (AA on both surfaces)
-BORDER = "#D9DFE5"    # hairlines
+HEADING = "#12181F"  # ink
+BODY = "#3B4552"  # slate body copy
+MUTED = "#6B7683"  # labels, captions (AA on both surfaces)
+BORDER = "#D9DFE5"  # hairlines
 SURFACE = "#FFFFFF"
-CANVAS = "#F3F5F7"    # cool paper, not cream
-INK = "#12181F"       # masthead / terminal surfaces
+CANVAS = "#F3F5F7"  # cool paper, not cream
+INK = "#12181F"  # masthead / terminal surfaces
 
 #: Canonical status -> colour. Used by badges, legends, charts and diagrams.
 STATUS_COLORS: dict[str, str] = {
@@ -130,7 +131,7 @@ _FONT_LINKS = (
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
     '<link rel="stylesheet" href="https://fonts.googleapis.com/css2'
     "?family=Inter:wght@400;500;600;700"
-    "&family=JetBrains+Mono:wght@500;700;800&display=swap\">"
+    '&family=JetBrains+Mono:wght@500;700;800&display=swap">'
 )
 
 _CSS = """
@@ -553,9 +554,13 @@ def af_metric(
     if delta:
         raw = str(delta).strip()
         if raw.startswith("-"):
-            delta_html = f'<div class="af-metric-delta af-metric-delta--down">&#9660; {_esc(raw)}</div>'
+            delta_html = (
+                f'<div class="af-metric-delta af-metric-delta--down">&#9660; {_esc(raw)}</div>'
+            )
         elif raw.startswith("+"):
-            delta_html = f'<div class="af-metric-delta af-metric-delta--up">&#9650; {_esc(raw)}</div>'
+            delta_html = (
+                f'<div class="af-metric-delta af-metric-delta--up">&#9650; {_esc(raw)}</div>'
+            )
         else:
             delta_html = f'<div class="af-metric-delta">{_esc(raw)}</div>'
     help_html = f'<div class="af-metric-help">{_esc(help_text)}</div>' if help_text else ""
@@ -694,9 +699,7 @@ def af_verdict(
         for label, value in stats
     )
     note_html = (
-        f'<div class="af-verdict-why"><b>{_esc(note_label)}</b> {_esc(note)}</div>'
-        if note
-        else ""
+        f'<div class="af-verdict-why"><b>{_esc(note_label)}</b> {_esc(note)}</div>' if note else ""
     )
     st.markdown(
         f'<div class="af-verdict" style="border-left-color:{colour}">'

@@ -1,4 +1,5 @@
 """Creative Strategist agent node."""
+
 from __future__ import annotations
 
 import json
@@ -17,7 +18,9 @@ class CreativeStrategistAgent(BaseAgent):
 
     def build_messages(self, agent_input: AgentInput) -> list[dict[str, str]]:
         brief = agent_input.brief.model_dump_json(indent=2) if agent_input.brief else "{}"
-        research = json.dumps(agent_input.upstream_payloads.get("research", {}), indent=2, default=str)
+        research = json.dumps(
+            agent_input.upstream_payloads.get("research", {}), indent=2, default=str
+        )
         reviewer_comments = agent_input.upstream_payloads.get("reviewer_comments")
         revision_note = ""
         if reviewer_comments:

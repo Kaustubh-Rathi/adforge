@@ -158,8 +158,7 @@ def test_server_starts_and_exposes_required_tools(server):
         assert actual == EXPECTED_TOOLS[server]
 
         annotations = {
-            tool["name"]: tool.get("annotations") or {}
-            for tool in listed["result"]["tools"]
+            tool["name"]: tool.get("annotations") or {} for tool in listed["result"]["tools"]
         }
         writes = EXPECTED_WRITE_TOOLS.get(server, set())
         for name, hints in annotations.items():

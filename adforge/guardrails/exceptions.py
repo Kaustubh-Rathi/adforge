@@ -8,6 +8,8 @@ that downstream nodes can route around.
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class GuardrailError(Exception):
     """Base class. Raise this (or a subclass) whenever a guardrail fires."""
@@ -20,7 +22,7 @@ class ContractValidationError(GuardrailError):
     surface it.
     """
 
-    def __init__(self, agent_name: str, errors: list[dict]) -> None:
+    def __init__(self, agent_name: str, errors: list[dict[str, Any]]) -> None:
         self.agent_name = agent_name
         self.errors = errors
         msg = f"[{agent_name}] contract validation failed: {errors}"
@@ -44,7 +46,7 @@ class DataIsolationError(GuardrailError):
         super().__init__(msg)
 
 
-class RateLimitExceeded(GuardrailError):
+class RateLimitExceededError(GuardrailError):
     """An agent exceeded its LLM or ad-platform API call budget.
 
     Carries the limit + the window so the trace UI can show "you blew through
@@ -55,14 +57,17 @@ class RateLimitExceeded(GuardrailError):
         self.scope = scope
         self.limit = limit
         self.window_seconds = window_seconds
-        msg = (
-            f"[rate-limit] scope={scope!r} exceeded {limit} calls "
-            f"in {window_seconds}s window"
-        )
+        msg = f"[rate-limit] scope={scope!r} exceeded {limit} calls in {window_seconds}s window"
         super().__init__(msg)
 
 
-class PolicyViolation(GuardrailError):
+#: Backwards-compatible alias. ``RateLimitExceeded`` is the name used in
+#: docs/ARCHITECTURE.md and by early adopters; the canonical class carries the
+#: flagging-conventional ``Error`` suffix.
+RateLimitExceeded = RateLimitExceededError
+
+
+class PolicyViolationError(GuardrailError):
     """An agent produced content that violated an advertising policy.
 
     The PolicyEnforcer raises this — typically for banned keywords,
@@ -74,6 +79,10 @@ class PolicyViolation(GuardrailError):
         self.detail = detail
         msg = f"[policy:{rule_id}] {detail}"
         super().__init__(msg)
+
+
+#: Backwards-compatible alias for :class:`PolicyViolationError`.
+PolicyViolation = PolicyViolationError
 
 
 class LLMTransportError(GuardrailError):

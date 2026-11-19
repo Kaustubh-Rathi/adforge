@@ -8,6 +8,7 @@ Publishing is delegated to a configured adapter (see ``writes.py``). There is
 no simulated success path: if writes are disabled or no adapter is configured,
 the tool returns an explicit error and nothing is launched.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,14 +26,32 @@ mcp = FastMCP("adforge-ads")
 @readonly
 async def list_channels(headers: dict[str, str] | None = None) -> str:
     """Return the list of ad platforms AdForge supports."""
-    return json.dumps({
-        "channels": [
-            {"id": "google", "name": "Google Ads", "capabilities": ["search", "display", "pmax", "youtube"]},
-            {"id": "meta", "name": "Meta Ads (Facebook + Instagram)", "capabilities": ["feed", "stories", "reels"]},
-            {"id": "linkedin", "name": "LinkedIn Marketing Solutions", "capabilities": ["sponsored_content", "message_ads", "inmail"]},
-            {"id": "tiktok", "name": "TikTok Ads", "capabilities": ["in_feed", "top_view", "spark_ads"]},
-        ]
-    })
+    return json.dumps(
+        {
+            "channels": [
+                {
+                    "id": "google",
+                    "name": "Google Ads",
+                    "capabilities": ["search", "display", "pmax", "youtube"],
+                },
+                {
+                    "id": "meta",
+                    "name": "Meta Ads (Facebook + Instagram)",
+                    "capabilities": ["feed", "stories", "reels"],
+                },
+                {
+                    "id": "linkedin",
+                    "name": "LinkedIn Marketing Solutions",
+                    "capabilities": ["sponsored_content", "message_ads", "inmail"],
+                },
+                {
+                    "id": "tiktok",
+                    "name": "TikTok Ads",
+                    "capabilities": ["in_feed", "top_view", "spark_ads"],
+                },
+            ]
+        }
+    )
 
 
 @mcp.tool(annotations=WRITE)

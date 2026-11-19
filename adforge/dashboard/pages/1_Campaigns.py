@@ -1,4 +1,5 @@
 """AdForge dashboard — Campaigns overview + create + run."""
+
 from __future__ import annotations
 
 import html
@@ -39,9 +40,7 @@ with m2:
     reviewing = sum(1 for c in campaigns if str(c.get("status", "")).lower() in _REVIEW_STATUSES)
     af_metric("Awaiting review", f"{reviewing:,}")
 with m3:
-    approved = sum(
-        1 for c in campaigns if str(c.get("status", "")).strip().lower() == "approved"
-    )
+    approved = sum(1 for c in campaigns if str(c.get("status", "")).strip().lower() == "approved")
     af_metric("Approved", f"{approved:,}")
 with m4:
     total_spend = sum(float(c.get("total_spend_usd") or 0.0) for c in campaigns)
@@ -55,10 +54,7 @@ def _usd(value: Any) -> str:
 def _campaign_action(status: str) -> str:
     """Link the row to the next useful page for that status."""
     if status.strip().lower() in _REVIEW_STATUSES:
-        return (
-            '<a class="af-ops-link" href="/Review_Queue" target="_self">'
-            "Open review &rarr;</a>"
-        )
+        return '<a class="af-ops-link" href="/Review_Queue" target="_self">Open review &rarr;</a>'
     return '<a class="af-ops-link" href="/ROI_Calculator" target="_self">See ROI &rarr;</a>'
 
 
@@ -72,19 +68,19 @@ def _campaign_row(c: dict[str, Any]) -> str:
     short_id = html.escape(str(c.get("id", ""))[:8])
     return (
         f'<div class="af-ops-row" style="border-left-color:{status_color(status)}">'
-        f'<div>'
+        f"<div>"
         f'<div class="af-ops-name">{html.escape(str(c.get("name", "(unnamed)")))}</div>'
         f'<div class="af-ops-meta">{af_badge(status)}'
         f'<span class="af-ops-id">id {short_id}</span>'
-        f'{created_html}{_campaign_action(status)}</div>'
-        f'</div>'
+        f"{created_html}{_campaign_action(status)}</div>"
+        f"</div>"
         f'<div class="af-ops-figures">'
         f'<div><div class="af-ops-fig-label">Spend</div>'
         f'<div class="af-ops-fig-value">{_usd(c.get("total_spend_usd"))}</div></div>'
         f'<div><div class="af-ops-fig-label">Revenue</div>'
         f'<div class="af-ops-fig-value">{_usd(c.get("total_revenue_usd"))}</div></div>'
-        f'</div>'
-        f'</div>'
+        f"</div>"
+        f"</div>"
     )
 
 
@@ -126,9 +122,7 @@ with st.expander("Create new campaign", expanded=False), st.form("create_campaig
             st.success(f"Created campaign: {new_campaign['id']}")
             st.rerun()
         except Exception as e:
-            af_note(
-                f"<b>Failed to create campaign.</b> {html.escape(str(e))}", tone="bad"
-            )
+            af_note(f"<b>Failed to create campaign.</b> {html.escape(str(e))}", tone="bad")
 
 # --- Campaign ledger ---
 if campaigns:

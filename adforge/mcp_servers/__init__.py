@@ -17,6 +17,7 @@ EXTERNAL (we integrate, see docs/RESEARCH.md):
 All local servers use the official Anthropic MCP Python SDK (``mcp[cli]``)
 via ``FastMCP``.
 """
+
 from adforge.mcp_servers.runner import run_server
 
 __all__ = ["run_server"]

@@ -1,6 +1,7 @@
 """Unit tests for the SEC EDGAR + Wikimedia pageviews tools on the public-data
 MCP server. All HTTP is intercepted with ``respx``; nothing touches the network.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,9 +52,7 @@ class TestTenantGuard:
 
     async def test_wikipedia_pageviews_requires_tenant(self):
         with pytest.raises(ValueError, match="X-AdForge-Tenant"):
-            await public_data.wikipedia_pageviews(
-                "Python", "20261101", "20261103", headers=None
-            )
+            await public_data.wikipedia_pageviews("Python", "20261101", "20261103", headers=None)
 
 
 class TestSecFinancials:
@@ -72,9 +71,7 @@ class TestSecFinancials:
             return_value=httpx.Response(200, json=_concept_payload())
         )
 
-        data = _json(
-            await public_data.sec_financials("aapl", "revenue", headers=HEADERS)
-        )
+        data = _json(await public_data.sec_financials("aapl", "revenue", headers=HEADERS))
 
         assert data["metric"] == "revenue"
         assert data["taxonomy"] == "us-gaap"
@@ -118,9 +115,7 @@ class TestSecFinancials:
             return_value=httpx.Response(200, json=_concept_payload(n=2))
         )
 
-        data = _json(
-            await public_data.sec_financials("320193", "revenue", headers=HEADERS)
-        )
+        data = _json(await public_data.sec_financials("320193", "revenue", headers=HEADERS))
 
         assert data["entity_name"] == "Apple Inc."
         assert data["count"] == 2
@@ -139,9 +134,7 @@ class TestSecFinancials:
             )
         )
 
-        data = _json(
-            await public_data.sec_financials("NOPE", "revenue", headers=HEADERS)
-        )
+        data = _json(await public_data.sec_financials("NOPE", "revenue", headers=HEADERS))
 
         assert data["error"] == "ticker_not_found"
         assert "NOPE" in data["detail"]
@@ -157,9 +150,7 @@ class TestSecFinancials:
             return_value=httpx.Response(404, text='{"message": "Not Found"}')
         )
 
-        data = _json(
-            await public_data.sec_financials("AAPL", "revenue", headers=HEADERS)
-        )
+        data = _json(await public_data.sec_financials("AAPL", "revenue", headers=HEADERS))
 
         assert "SEC EDGAR API 404" in data["error"]
         assert "Not Found" in data["error"]

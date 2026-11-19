@@ -4,6 +4,7 @@ Uses the embedded PostgreSQL server from ``tests/conftest.py``. These cover the
 contract the dashboard and KPI agent depend on: idempotent daily upserts,
 tenant scoping, channel/day aggregation, and campaign total roll-ups.
 """
+
 from __future__ import annotations
 
 import json
@@ -106,42 +107,32 @@ class TestAnalyticsMcp:
         )
         for snap in (first, second):
             result = json.loads(
-                await analytics.persist_kpi_snapshot(
-                    _payload(snap, campaign_id), headers=headers
-                )
+                await analytics.persist_kpi_snapshot(_payload(snap, campaign_id), headers=headers)
             )
             assert result["status"] == "persisted"
             UUID(result["id"])  # returned id is a UUID
 
-        rows = json.loads(
-            await analytics.query_kpis(str(campaign_id), headers=headers)
-        )
+        rows = json.loads(await analytics.query_kpis(str(campaign_id), headers=headers))
         assert rows["count"] == 2
         channels = {row["channel"] for row in rows["snapshots"]}
         assert channels == {"google", "linkedin"}
         assert all(row["tenant_id"] == tenant for row in rows["snapshots"])
 
         filtered = json.loads(
-            await analytics.query_kpis(
-                str(campaign_id), channel="google", headers=headers
-            )
+            await analytics.query_kpis(str(campaign_id), channel="google", headers=headers)
         )
         assert filtered["count"] == 1
         assert filtered["snapshots"][0]["channel"] == "google"
 
         by_channel = json.loads(
-            await analytics.aggregate_kpis(
-                str(campaign_id), group_by="channel", headers=headers
-            )
+            await analytics.aggregate_kpis(str(campaign_id), group_by="channel", headers=headers)
         )
         assert {b["bucket"] for b in by_channel["buckets"]} == {"google", "linkedin"}
         # Provenance travels with the aggregate: real rows must not be flagged.
         assert all(b["is_mock"] is False for b in by_channel["buckets"])
 
         by_day = json.loads(
-            await analytics.aggregate_kpis(
-                str(campaign_id), group_by="day", headers=headers
-            )
+            await analytics.aggregate_kpis(str(campaign_id), group_by="day", headers=headers)
         )
         assert len(by_day["buckets"]) == 1  # both snapshots are on 2026-01-05
 
@@ -156,9 +147,7 @@ class TestAnalyticsMcp:
         await analytics.persist_kpi_snapshot(_payload(original, campaign_id), headers=headers)
         await analytics.persist_kpi_snapshot(_payload(updated, campaign_id), headers=headers)
 
-        rows = json.loads(
-            await analytics.query_kpis(str(campaign_id), headers=headers)
-        )
+        rows = json.loads(await analytics.query_kpis(str(campaign_id), headers=headers))
         assert rows["count"] == 1
         assert rows["snapshots"][0]["impressions"] == 2000
         assert rows["snapshots"][0]["spend_usd"] == 80.0
@@ -171,9 +160,7 @@ class TestAnalyticsMcp:
         )
 
         other = json.loads(
-            await analytics.query_kpis(
-                str(campaign_id), headers={"X-AdForge-Tenant": "intruder"}
-            )
+            await analytics.query_kpis(str(campaign_id), headers={"X-AdForge-Tenant": "intruder"})
         )
         assert other == {"snapshots": [], "count": 0}
 
@@ -202,9 +189,7 @@ class TestSnapshotCoercion:
     """JSON callers send strings; asyncpg requires real date/datetime values."""
 
     def test_coerce_date_accepts_supported_shapes(self):
-        assert analytics._coerce_date(
-            datetime(2026, 1, 5, 12, 0, tzinfo=UTC)
-        ) == date(2026, 1, 5)
+        assert analytics._coerce_date(datetime(2026, 1, 5, 12, 0, tzinfo=UTC)) == date(2026, 1, 5)
         assert analytics._coerce_date(date(2026, 1, 5)) == date(2026, 1, 5)
         assert analytics._coerce_date("2026-01-05T12:00:00Z") == date(2026, 1, 5)
         # Compact YYYYMMDDThhmmss is accepted because the date prefix is
@@ -215,9 +200,7 @@ class TestSnapshotCoercion:
         aware = datetime(2026, 1, 5, 12, 0, tzinfo=UTC)
         assert analytics._coerce_datetime(aware) is aware
         assert analytics._coerce_datetime("2026-01-05T12:00:00Z") == aware
-        assert analytics._coerce_datetime("20260105120000") == datetime(
-            2026, 1, 5, tzinfo=UTC
-        )
+        assert analytics._coerce_datetime("20260105120000") == datetime(2026, 1, 5, tzinfo=UTC)
 
         naive = analytics._coerce_datetime("2026-01-05T12:00:00")
         assert naive == aware
@@ -225,12 +208,8 @@ class TestSnapshotCoercion:
 
         # Date-only strings and date strings with a trailing Z exercise the
         # ValueError fallback that reuses _coerce_date.
-        assert analytics._coerce_datetime("2026-01-05") == datetime(
-            2026, 1, 5, tzinfo=UTC
-        )
-        assert analytics._coerce_datetime("2026-01-05Z") == datetime(
-            2026, 1, 5, tzinfo=UTC
-        )
+        assert analytics._coerce_datetime("2026-01-05") == datetime(2026, 1, 5, tzinfo=UTC)
+        assert analytics._coerce_datetime("2026-01-05Z") == datetime(2026, 1, 5, tzinfo=UTC)
 
     async def test_persist_accepts_string_dates_from_json_callers(self, db_env):
         tenant = "acme"
@@ -246,14 +225,10 @@ class TestSnapshotCoercion:
         )
         assert persisted["status"] == "persisted"
 
-        rows = json.loads(
-            await analytics.query_kpis(str(campaign_id), headers=headers)
-        )
+        rows = json.loads(await analytics.query_kpis(str(campaign_id), headers=headers))
         assert rows["count"] == 1
         assert rows["snapshots"][0]["platform_date"] == DAY_ONE.isoformat()
-        assert rows["snapshots"][0]["captured_at"].startswith(
-            f"{DAY_ONE.isoformat()}T09:30:00"
-        )
+        assert rows["snapshots"][0]["captured_at"].startswith(f"{DAY_ONE.isoformat()}T09:30:00")
 
 
 class TestKpiPersistenceRollup:
@@ -267,9 +242,7 @@ class TestKpiPersistenceRollup:
 
         assert await persist_snapshots(scope, campaign_id, [day_one, day_two]) == 2
         # Re-running with updated values must update, not duplicate.
-        updated = _snapshot(
-            campaign_id, day=DAY_ONE, spend=60.0, revenue=240.0
-        )
+        updated = _snapshot(campaign_id, day=DAY_ONE, spend=60.0, revenue=240.0)
         assert await persist_snapshots(scope, campaign_id, [updated]) == 1
 
         from sqlalchemy import text
@@ -279,24 +252,32 @@ class TestKpiPersistenceRollup:
         factory = get_session_factory()
         async with factory() as session:
             row = (
-                await session.execute(
-                    text(
-                        "SELECT COUNT(*) AS n, SUM(spend_usd) AS spend, "
-                        "SUM(revenue_usd) AS revenue FROM kpi_snapshots "
-                        "WHERE tenant_id = :tid AND campaign_id = :cid"
-                    ),
-                    {"tid": tenant, "cid": str(campaign_id)},
+                (
+                    await session.execute(
+                        text(
+                            "SELECT COUNT(*) AS n, SUM(spend_usd) AS spend, "
+                            "SUM(revenue_usd) AS revenue FROM kpi_snapshots "
+                            "WHERE tenant_id = :tid AND campaign_id = :cid"
+                        ),
+                        {"tid": tenant, "cid": str(campaign_id)},
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             campaign = (
-                await session.execute(
-                    text(
-                        "SELECT total_spend_usd, total_revenue_usd FROM campaigns "
-                        "WHERE id = :cid AND tenant_id = :tid"
-                    ),
-                    {"cid": str(campaign_id), "tid": tenant},
+                (
+                    await session.execute(
+                        text(
+                            "SELECT total_spend_usd, total_revenue_usd FROM campaigns "
+                            "WHERE id = :cid AND tenant_id = :tid"
+                        ),
+                        {"cid": str(campaign_id), "tid": tenant},
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
 
         assert row["n"] == 2
         assert float(row["spend"]) == 90.0
@@ -319,9 +300,7 @@ class TestKpiPersistenceRollup:
         async with factory() as session:
             other = (
                 await session.execute(
-                    text(
-                        "SELECT total_spend_usd FROM campaigns WHERE id = :cid"
-                    ),
+                    text("SELECT total_spend_usd FROM campaigns WHERE id = :cid"),
                     {"cid": str(other_id)},
                 )
             ).scalar_one()

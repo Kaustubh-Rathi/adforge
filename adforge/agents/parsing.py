@@ -62,7 +62,7 @@ def validate_payload(
     except ValidationError as exc:
         raise ContractValidationError(
             agent_name=agent_name,
-            errors=exc.errors(include_url=False),
+            errors=[dict(err) for err in exc.errors(include_url=False)],
         ) from exc
 
 

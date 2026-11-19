@@ -46,9 +46,7 @@ class TestApiKeyAuth:
 
     async def _get(self, app: FastAPI, headers: dict[str, str]):
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://adforge.test"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://adforge.test") as client:
             return await client.get("/whoami", headers=headers)
 
     async def test_key_required_when_configured(self, monkeypatch):
@@ -94,9 +92,7 @@ class TestApiKeyAuth:
 class TestCors:
     async def _preflight(self, origin: str):
         transport = httpx.ASGITransport(app=api_main.app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://adforge.test"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://adforge.test") as client:
             return await client.options(
                 "/health",
                 headers={
@@ -136,9 +132,7 @@ class TestCors:
 
 class TestReviewerAllowlist:
     def test_unknown_reviewer_is_403(self, monkeypatch):
-        _prepare_env(
-            monkeypatch, APP_REVIEWER_ALLOWLIST="rev@acme.test, lead@acme.test"
-        )
+        _prepare_env(monkeypatch, APP_REVIEWER_ALLOWLIST="rev@acme.test, lead@acme.test")
         with pytest.raises(HTTPException) as exc:
             reviews._assert_reviewer_allowed("intern@acme.test")
         assert exc.value.status_code == 403
@@ -337,9 +331,7 @@ async def publish_client(monkeypatch):
     api_main.app.dependency_overrides[deps.get_db] = _get_db
     transport = httpx.ASGITransport(app=api_main.app)
     try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://adforge.test"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://adforge.test") as client:
             yield client, sessions, rows
     finally:
         api_main.app.dependency_overrides.pop(deps.get_db, None)
@@ -375,9 +367,7 @@ def _enable_writes(monkeypatch) -> None:
 
 class TestPublishEndpoint:
     @respx.mock
-    async def test_publish_success_moves_campaign_live(
-        self, publish_client, monkeypatch
-    ):
+    async def test_publish_success_moves_campaign_live(self, publish_client, monkeypatch):
         client, sessions, rows = publish_client
         _enable_writes(monkeypatch)
         campaign_id = uuid4()
@@ -420,15 +410,10 @@ class TestPublishEndpoint:
             "UPDATE campaigns SET status = 'live'" in statement
             for statement, _ in sessions[0].statements
         )
-        assert any(
-            "publish.executed" in statement
-            for statement, _ in sessions[0].statements
-        )
+        assert any("publish.executed" in statement for statement, _ in sessions[0].statements)
 
     @respx.mock
-    async def test_publish_twice_reuses_consumed_token(
-        self, publish_client, monkeypatch
-    ):
+    async def test_publish_twice_reuses_consumed_token(self, publish_client, monkeypatch):
         client, _sessions, rows = publish_client
         _enable_writes(monkeypatch)
         campaign_id = uuid4()
@@ -462,9 +447,7 @@ class TestPublishEndpoint:
         assert second.status_code == 409
         assert "already used" in second.json()["detail"]
 
-    async def test_unapproved_campaign_cannot_publish(
-        self, publish_client, monkeypatch
-    ):
+    async def test_unapproved_campaign_cannot_publish(self, publish_client, monkeypatch):
         client, _sessions, rows = publish_client
         _enable_writes(monkeypatch)
         campaign_id = uuid4()
@@ -481,9 +464,7 @@ class TestPublishEndpoint:
         assert r.status_code == 409
         assert "must be approved" in r.json()["detail"]
 
-    async def test_missing_approval_token_is_refused(
-        self, publish_client, monkeypatch
-    ):
+    async def test_missing_approval_token_is_refused(self, publish_client, monkeypatch):
         client, _sessions, rows = publish_client
         _enable_writes(monkeypatch)
         campaign_id = uuid4()
@@ -505,9 +486,7 @@ class TestPublishEndpoint:
         assert r.status_code == 409
         assert "no approval token" in r.json()["detail"]
 
-    async def test_media_plan_over_approved_budget_is_refused(
-        self, publish_client, monkeypatch
-    ):
+    async def test_media_plan_over_approved_budget_is_refused(self, publish_client, monkeypatch):
         client, _sessions, rows = publish_client
         _enable_writes(monkeypatch)
         campaign_id = uuid4()
@@ -560,9 +539,7 @@ class TestPublishEndpoint:
         assert r.status_code == 403
         assert "X-AdForge-Reviewer" in r.json()["detail"]
 
-    async def test_writes_disabled_blocks_publish(
-        self, publish_client, monkeypatch
-    ):
+    async def test_writes_disabled_blocks_publish(self, publish_client, monkeypatch):
         client, _sessions, rows = publish_client
         _prepare_env(
             monkeypatch,

@@ -1,4 +1,5 @@
 """ROI Calculator agent node."""
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,12 @@ class RoiCalculatorAgent(BaseAgent):
 
     def build_messages(self, agent_input: AgentInput) -> list[dict[str, str]]:
         brief = agent_input.brief.model_dump_json(indent=2) if agent_input.brief else "{}"
-        kpis = json.dumps(agent_input.upstream_payloads.get("kpi_analytics", {}), indent=2, default=str)
-        media_plan = json.dumps(agent_input.upstream_payloads.get("media_plan", {}), indent=2, default=str)
+        kpis = json.dumps(
+            agent_input.upstream_payloads.get("kpi_analytics", {}), indent=2, default=str
+        )
+        media_plan = json.dumps(
+            agent_input.upstream_payloads.get("media_plan", {}), indent=2, default=str
+        )
 
         return [
             {"role": "system", "content": self.persona},

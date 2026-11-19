@@ -4,6 +4,7 @@ Every external HTTP call is intercepted with ``respx`` so the suite never
 touches the network. Tools are exercised directly as async functions, which is
 how FastMCP invokes them in-process.
 """
+
 from __future__ import annotations
 
 import json
@@ -53,12 +54,8 @@ class TestSimilarWebTraffic:
     @respx.mock
     async def test_key_returns_raw_payload(self, monkeypatch):
         _refresh_settings(monkeypatch, SIMILARWEB_API_KEY="sw-key")
-        route = respx.get(
-            url__regex=r"https://api\.similarweb\.com/v1/website/acme\.com/.*"
-        ).mock(
-            return_value=httpx.Response(
-                200, json={"visits": [{"date": "2026-10", "value": 9000}]}
-            )
+        route = respx.get(url__regex=r"https://api\.similarweb\.com/v1/website/acme\.com/.*").mock(
+            return_value=httpx.Response(200, json={"visits": [{"date": "2026-10", "value": 9000}]})
         )
 
         data = _json(await public_data.similarweb_traffic("acme.com", headers=HEADERS))
@@ -109,9 +106,7 @@ class TestAppStoreSearch:
             )
         )
 
-        data = _json(
-            await public_data.appstore_search("widget", country="gb", headers=HEADERS)
-        )
+        data = _json(await public_data.appstore_search("widget", country="gb", headers=HEADERS))
 
         assert data["query"] == "widget"
         assert data["country"] == "gb"
@@ -137,9 +132,7 @@ class TestAppStoreSearch:
 
     @respx.mock
     async def test_non_200_returns_error(self):
-        respx.get("https://itunes.apple.com/search").mock(
-            return_value=httpx.Response(503)
-        )
+        respx.get("https://itunes.apple.com/search").mock(return_value=httpx.Response(503))
 
         data = _json(await public_data.appstore_search("widget", headers=HEADERS))
 
@@ -191,9 +184,7 @@ class TestAppStoreReviews:
         )
 
         data = _json(
-            await public_data.appstore_reviews(
-                app_id=123, country="gb", limit=2, headers=HEADERS
-            )
+            await public_data.appstore_reviews(app_id=123, country="gb", limit=2, headers=HEADERS)
         )
 
         assert data["app_id"] == 123
@@ -216,9 +207,7 @@ class TestAppStoreReviews:
             return_value=httpx.Response(404)
         )
 
-        data = _json(
-            await public_data.appstore_reviews(app_id=999, headers=HEADERS)
-        )
+        data = _json(await public_data.appstore_reviews(app_id=999, headers=HEADERS))
 
         assert data == {"error": "iTunes RSS 404"}
 
@@ -276,9 +265,7 @@ class TestIpinfoLookup:
 
     @respx.mock
     async def test_non_200_returns_error(self):
-        respx.get(url__regex=r"https://ipinfo\.io/.*").mock(
-            return_value=httpx.Response(429)
-        )
+        respx.get(url__regex=r"https://ipinfo\.io/.*").mock(return_value=httpx.Response(429))
 
         data = _json(await public_data.ipinfo_lookup("8.8.8.8", headers=HEADERS))
 
@@ -335,9 +322,7 @@ class TestAbuseIpdbCheck:
     @respx.mock
     async def test_non_200_returns_error(self, monkeypatch):
         _refresh_settings(monkeypatch, ABUSEIPDB_API_KEY="abuse-key")
-        respx.get("https://api.abuseipdb.com/api/v2/check").mock(
-            return_value=httpx.Response(403)
-        )
+        respx.get("https://api.abuseipdb.com/api/v2/check").mock(return_value=httpx.Response(403))
 
         data = _json(await public_data.abuseipdb_check("203.0.113.7", headers=HEADERS))
 
@@ -419,19 +404,15 @@ class TestGithubRepoStats:
 
 class TestHackerNewsTop:
     async def test_invalid_story_type_returns_error(self):
-        data = _json(
-            await public_data.hackernews_top(story_type="random", headers=HEADERS)
-        )
+        data = _json(await public_data.hackernews_top(story_type="random", headers=HEADERS))
 
-        assert data == {
-            "error": "story_type must be one of: top, new, best, ask, show, job"
-        }
+        assert data == {"error": "story_type must be one of: top, new, best, ask, show, job"}
 
     @respx.mock
     async def test_success_skips_failed_and_empty_items(self):
-        ids_route = respx.get(
-            "https://hacker-news.firebaseio.com/v0/topstories.json"
-        ).mock(return_value=httpx.Response(200, json=[101, 102, 103, 104, 105]))
+        ids_route = respx.get("https://hacker-news.firebaseio.com/v0/topstories.json").mock(
+            return_value=httpx.Response(200, json=[101, 102, 103, 104, 105])
+        )
         respx.get("https://hacker-news.firebaseio.com/v0/item/101.json").mock(
             return_value=httpx.Response(
                 200,
@@ -457,13 +438,11 @@ class TestHackerNewsTop:
         respx.get("https://hacker-news.firebaseio.com/v0/item/104.json").mock(
             return_value=httpx.Response(200, json={})
         )
-        item_105_route = respx.get(
-            "https://hacker-news.firebaseio.com/v0/item/105.json"
-        ).mock(return_value=httpx.Response(200, json={"id": 105}))
-
-        data = _json(
-            await public_data.hackernews_top(story_type="top", n=4, headers=HEADERS)
+        item_105_route = respx.get("https://hacker-news.firebaseio.com/v0/item/105.json").mock(
+            return_value=httpx.Response(200, json={"id": 105})
         )
+
+        data = _json(await public_data.hackernews_top(story_type="top", n=4, headers=HEADERS))
 
         assert ids_route.call_count == 1
         assert item_105_route.call_count == 0  # ids sliced to n before fetching
@@ -492,22 +471,16 @@ class TestHackerNewsTop:
             return_value=httpx.Response(503)
         )
 
-        data = _json(
-            await public_data.hackernews_top(story_type="new", n=2, headers=HEADERS)
-        )
+        data = _json(await public_data.hackernews_top(story_type="new", n=2, headers=HEADERS))
 
         assert data == {"error": "HN API 503"}
 
 
 class TestRedditSearch:
     async def test_invalid_sort_returns_error(self):
-        data = _json(
-            await public_data.reddit_search("widget", sort="rising", headers=HEADERS)
-        )
+        data = _json(await public_data.reddit_search("widget", sort="rising", headers=HEADERS))
 
-        assert data == {
-            "error": "sort must be one of: relevance, hot, top, new, comments"
-        }
+        assert data == {"error": "sort must be one of: relevance, hot, top, new, comments"}
 
     @respx.mock
     async def test_success_maps_posts(self):
@@ -641,13 +614,9 @@ class TestStackExchangeSearch:
 
     @respx.mock
     async def test_non_200_returns_error(self):
-        respx.get("https://api.stackexchange.com/2.3/search").mock(
-            return_value=httpx.Response(502)
-        )
+        respx.get("https://api.stackexchange.com/2.3/search").mock(return_value=httpx.Response(502))
 
-        data = _json(
-            await public_data.stackexchange_search("widget", headers=HEADERS)
-        )
+        data = _json(await public_data.stackexchange_search("widget", headers=HEADERS))
 
         assert data == {"error": "StackExchange API 502"}
 
@@ -736,9 +705,7 @@ class TestProductHuntSearch:
 class TestOpenCorporatesSearch:
     @respx.mock
     async def test_success_maps_companies_and_caps_per_page(self):
-        route = respx.get(
-            "https://api.opencorporates.com/v0.4/companies/search"
-        ).mock(
+        route = respx.get("https://api.opencorporates.com/v0.4/companies/search").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -768,9 +735,7 @@ class TestOpenCorporatesSearch:
             )
         )
 
-        data = _json(
-            await public_data.opencorporates_search("acme widgets", n=50, headers=HEADERS)
-        )
+        data = _json(await public_data.opencorporates_search("acme widgets", n=50, headers=HEADERS))
 
         assert data["query"] == "acme widgets"
         assert data["count"] == 2
@@ -797,9 +762,7 @@ class TestOpenCorporatesSearch:
             return_value=httpx.Response(401)
         )
 
-        data = _json(
-            await public_data.opencorporates_search("acme widgets", headers=HEADERS)
-        )
+        data = _json(await public_data.opencorporates_search("acme widgets", headers=HEADERS))
 
         assert data == {"error": "OpenCorporates API 401"}
 
@@ -822,11 +785,7 @@ class TestWikipediaSearchDirect:
             )
         )
 
-        data = _json(
-            await public_data.wikipedia_search_direct(
-                "acme", n=2, headers=HEADERS
-            )
-        )
+        data = _json(await public_data.wikipedia_search_direct("acme", n=2, headers=HEADERS))
 
         assert data == {
             "query": "acme",
@@ -857,20 +816,14 @@ class TestWikipediaSearchDirect:
             return_value=httpx.Response(200, json=["acme", []])
         )
 
-        data = _json(
-            await public_data.wikipedia_search_direct("acme", headers=HEADERS)
-        )
+        data = _json(await public_data.wikipedia_search_direct("acme", headers=HEADERS))
 
         assert data == {"query": "acme", "results": []}
 
     @respx.mock
     async def test_non_200_returns_error(self):
-        respx.get("https://en.wikipedia.org/w/api.php").mock(
-            return_value=httpx.Response(429)
-        )
+        respx.get("https://en.wikipedia.org/w/api.php").mock(return_value=httpx.Response(429))
 
-        data = _json(
-            await public_data.wikipedia_search_direct("acme", headers=HEADERS)
-        )
+        data = _json(await public_data.wikipedia_search_direct("acme", headers=HEADERS))
 
         assert data == {"error": "Wikipedia API 429"}

@@ -30,7 +30,9 @@ from adforge.guardrails.exceptions import (
     DataIsolationError,
     GuardrailError,
     PolicyViolation,
+    PolicyViolationError,
     RateLimitExceeded,
+    RateLimitExceededError,
 )
 from adforge.guardrails.policy import PolicyEnforcer
 from adforge.guardrails.rate_limiter import RateLimiter
@@ -50,7 +52,9 @@ __all__ = [
     "ContractValidationError",
     "DataIsolationError",
     "RateLimitExceeded",
+    "RateLimitExceededError",
     "PolicyViolation",
+    "PolicyViolationError",
     "tenant_scope",
     "assert_tenant_access",
     "RateLimiter",

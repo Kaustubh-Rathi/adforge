@@ -1,4 +1,5 @@
 """OpenAI adapter — swap in by setting LLM_PROVIDER=openai."""
+
 from __future__ import annotations
 
 import json
@@ -18,6 +19,7 @@ class OpenAIProvider(LLMProvider):
             raise GuardrailError("OPENAI_API_KEY not set — cannot init OpenAIProvider.")
         # Lazy import so users who never use OpenAI don't pay the install cost.
         from openai import AsyncOpenAI
+
         self._client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=s.openai_base_url,
@@ -57,9 +59,7 @@ class OpenAIProvider(LLMProvider):
                 arguments = {"_raw_arguments": call.function.arguments}
             if not isinstance(arguments, dict):
                 arguments = {"value": arguments}
-            tool_calls.append(
-                ToolCall(id=call.id, name=call.function.name, arguments=arguments)
-            )
+            tool_calls.append(ToolCall(id=call.id, name=call.function.name, arguments=arguments))
         return LLMResponse(
             content=choice.message.content or "",
             usage=usage,

@@ -11,6 +11,7 @@ Writes are disabled by default and require:
   3. ``ADFORGE_PUBLISH_WEBHOOK_URL``
   4. a budget within ``GUARDRAILS_MAX_CAMPAIGN_BUDGET_USD``
 """
+
 from __future__ import annotations
 
 import math
@@ -34,17 +35,14 @@ async def _call_webhook(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         )
     if not settings.adforge_publish_webhook_url:
         raise WriteGatewayError(
-            "ADFORGE_PUBLISH_WEBHOOK_URL is not configured; no campaign was "
-            "published"
+            "ADFORGE_PUBLISH_WEBHOOK_URL is not configured; no campaign was published"
         )
 
     headers = {"Content-Type": "application/json"}
     if settings.adforge_publish_webhook_token:
         headers["Authorization"] = f"Bearer {settings.adforge_publish_webhook_token}"
 
-    async with httpx.AsyncClient(
-        timeout=settings.external_http_timeout, trust_env=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=settings.external_http_timeout, trust_env=False) as client:
         response = await client.post(
             settings.adforge_publish_webhook_url,
             json={"action": action, **payload},
@@ -59,9 +57,7 @@ async def _call_webhook(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         raise WriteGatewayError("publish adapter returned invalid JSON") from exc
     if not isinstance(body, dict) or body.get("error"):
-        raise WriteGatewayError(
-            f"publish adapter rejected the write: {str(body)[:300]}"
-        )
+        raise WriteGatewayError(f"publish adapter rejected the write: {str(body)[:300]}")
     return body
 
 
@@ -100,8 +96,7 @@ async def publish_campaign(
     external_id = body.get("external_campaign_id")
     if not external_id:
         raise WriteGatewayError(
-            "publish adapter did not return external_campaign_id; refusing to "
-            "report success"
+            "publish adapter did not return external_campaign_id; refusing to report success"
         )
     return {
         "channel": channel,
@@ -112,9 +107,7 @@ async def publish_campaign(
     }
 
 
-async def pause_campaign(
-    *, channel: str, external_campaign_id: str
-) -> dict[str, Any]:
+async def pause_campaign(*, channel: str, external_campaign_id: str) -> dict[str, Any]:
     body = await _call_webhook(
         "pause_campaign",
         {"channel": channel, "external_campaign_id": external_campaign_id},

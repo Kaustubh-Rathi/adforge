@@ -10,6 +10,7 @@ Safety properties:
     reviewer and is consumed atomically before any external call,
   * every budget is checked against the configured cap.
 """
+
 from __future__ import annotations
 
 import math
@@ -59,15 +60,12 @@ async def publish_approved_campaign(
         )
     if not settings.adforge_publish_webhook_url:
         raise PublishError(
-            "ADFORGE_PUBLISH_WEBHOOK_URL is not configured; no campaign was "
-            "published"
+            "ADFORGE_PUBLISH_WEBHOOK_URL is not configured; no campaign was published"
         )
 
     # Validate the whole money envelope before consuming the single-use token
     # or touching any external service.
-    plan_total = _positive_finite(
-        media_plan.get("total_budget_usd"), "media plan total_budget_usd"
-    )
+    plan_total = _positive_finite(media_plan.get("total_budget_usd"), "media plan total_budget_usd")
     if plan_total > settings.guardrails_max_campaign_budget_usd:
         raise PublishError(
             f"media plan budget ${plan_total:,.2f} exceeds the configured cap "
@@ -76,9 +74,7 @@ async def publish_approved_campaign(
 
     brief_budget = (brief or {}).get("budget_usd")
     if brief_budget is not None:
-        approved_budget = _positive_finite(
-            brief_budget, "campaign brief budget_usd"
-        )
+        approved_budget = _positive_finite(brief_budget, "campaign brief budget_usd")
         if plan_total > approved_budget + 0.01:
             raise PublishError(
                 f"media plan budget ${plan_total:,.2f} exceeds the approved "
@@ -141,8 +137,7 @@ async def publish_approved_campaign(
             )
         except writes.WriteGatewayError as exc:
             raise PublishError(
-                f"channel {channel!r} failed after {len(results)} successful "
-                f"publish(es): {exc}"
+                f"channel {channel!r} failed after {len(results)} successful publish(es): {exc}"
             ) from exc
         results.append(result)
     return results

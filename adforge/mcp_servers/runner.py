@@ -11,6 +11,7 @@ Usage:
 Each server runs in its own process — see docker-compose.yml. This lets us
 distribute load across instances instead of cramming every tool onto one process.
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,16 +34,18 @@ def run_server(name: str) -> None:
         sys.exit(2)
 
     from adforge.config import get_settings
+
     s = get_settings()
 
     module_path, attr = SERVERS[name].split(":")
     import importlib
+
     mod = importlib.import_module(module_path)
     mcp = getattr(mod, attr)
 
     # FastMCP reads host/port from its settings; ``run()`` only accepts the
     # transport and mount path.
-    transport = s.mcp_transport
+    transport: str = s.mcp_transport
     if transport == "streamable_http":
         transport = "streamable-http"
     if transport == "sse":
@@ -60,8 +63,19 @@ def run_server(name: str) -> None:
     mcp.run(transport=transport)
 
 
-if __name__ == "__main__":
+def run() -> None:
+    """Console-script entrypoint (``adforge-mcp <name>``).
+
+    The installed script has no ``__main__`` guard, so it dispatches through
+    here. Kept separate from :func:`run_server` so tests can import the module
+    without reading ``sys.argv``.
+    """
     if len(sys.argv) != 2:
-        print("Usage: python -m adforge.mcp_servers.runner <name>", file=sys.stderr)
+        print("Usage: adforge-mcp <name>", file=sys.stderr)
+        print(f"Available: {', '.join(SERVERS)}", file=sys.stderr)
         sys.exit(2)
     run_server(sys.argv[1])
+
+
+if __name__ == "__main__":
+    run()

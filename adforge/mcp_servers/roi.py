@@ -10,6 +10,7 @@ This server is intentionally pure-Python — no DB calls, no LLM calls. The
 ROI agent calls these as deterministic functions to sanity-check the LLM's
 verdict before persisting.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,9 +40,7 @@ async def compute_cpa(spend_usd: float, conversions: int) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 @readonly
-async def compute_payback_period(
-    cac_usd: float, ltv_usd: float, gross_margin_pct: float
-) -> str:
+async def compute_payback_period(cac_usd: float, ltv_usd: float, gross_margin_pct: float) -> str:
     """Days to recoup customer acquisition cost. LTV * gross_margin / 365 = daily profit.
     payback_days = cac / (ltv * margin / 365)"""
     if ltv_usd <= 0 or gross_margin_pct <= 0:

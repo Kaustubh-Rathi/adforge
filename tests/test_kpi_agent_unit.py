@@ -1,4 +1,5 @@
 """Unit tests for the KPI/Analytics agent node (deterministic fetch + persist)."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -73,9 +74,7 @@ class TestKpiFetch:
         return _fetch
 
     async def test_media_plan_allocations_drive_fetch(self, monkeypatch):
-        monkeypatch.setattr(
-            kpi_agent_module, "fetch_channel_snapshots", self._fake_fetch(7)
-        )
+        monkeypatch.setattr(kpi_agent_module, "fetch_channel_snapshots", self._fake_fetch(7))
         agent = KpiAnalyticsAgent(llm=ScriptedLLM(default={}))
         plan = {
             "channel_allocations": [
@@ -102,9 +101,7 @@ class TestKpiFetch:
         assert any(error.startswith("persist:") for error in payload["errors"])
 
     async def test_brief_channels_are_used_when_media_plan_missing(self, monkeypatch):
-        monkeypatch.setattr(
-            kpi_agent_module, "fetch_channel_snapshots", self._fake_fetch(1)
-        )
+        monkeypatch.setattr(kpi_agent_module, "fetch_channel_snapshots", self._fake_fetch(1))
         agent = KpiAnalyticsAgent(llm=ScriptedLLM(default={}))
         result = await agent.run(_input())
         assert result.ok is True
@@ -183,19 +180,11 @@ class TestKpiFetch:
             assert scope.tenant_id == "tenant_a"
             return len(models)
 
-        monkeypatch.setattr(
-            kpi_agent_module, "fetch_channel_snapshots", self._fake_fetch(7)
-        )
+        monkeypatch.setattr(kpi_agent_module, "fetch_channel_snapshots", self._fake_fetch(7))
         monkeypatch.setattr(kpi_agent_module, "persist_snapshots", fake_persist)
         agent = KpiAnalyticsAgent(llm=ScriptedLLM(default={}))
         result = await agent.run(
-            _input(
-                media_plan={
-                    "channel_allocations": [
-                        {"channel": "google", "budget_usd": 1.0}
-                    ]
-                }
-            )
+            _input(media_plan={"channel_allocations": [{"channel": "google", "budget_usd": 1.0}]})
         )
         assert result.ok is True
         assert result.output.payload["persisted"] == 7

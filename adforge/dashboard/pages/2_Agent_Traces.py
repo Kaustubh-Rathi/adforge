@@ -1,4 +1,5 @@
 """Agent Traces page — inspect agent runs + audit events."""
+
 from __future__ import annotations
 
 import html
@@ -37,7 +38,7 @@ _RUN_BADGE_TOKENS: dict[str, str] = {
 }
 
 
-def _summarise(payload: dict) -> str:
+def _summarise(payload: dict[str, Any]) -> str:
     """Short summary of an audit event payload for the table."""
     if "error" in payload:
         return f"ERROR: {payload['error'][:80]}"
@@ -54,9 +55,7 @@ def _fmt_ts(raw: Any) -> str:
     if not text:
         return "-"
     try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime(
-            "%d %b %Y, %H:%M:%S"
-        )
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%d %b %Y, %H:%M:%S")
     except ValueError:
         return text
 
@@ -132,9 +131,7 @@ except Exception as e:
 
 run_list = runs.get("runs", [])
 if status_filter != "(all)":
-    run_list = [
-        r for r in run_list if str(r.get("status", "")).strip().lower() == status_filter
-    ]
+    run_list = [r for r in run_list if str(r.get("status", "")).strip().lower() == status_filter]
 
 m1, m2, m3, m4 = st.columns(4)
 with m1:
@@ -161,8 +158,8 @@ if run_list:
             _run_badge(r["status"]),
             _esc(_fmt_ts(r["started_at"])),
             _fmt_duration(r.get("duration_seconds")),
-            f'{int((r.get("usage") or {}).get("total_tokens") or 0):,}',
-            f'${float((r.get("usage") or {}).get("cost_usd") or 0.0):,.2f}',
+            f"{int((r.get('usage') or {}).get('total_tokens') or 0):,}",
+            f"${float((r.get('usage') or {}).get('cost_usd') or 0.0):,.2f}",
         ]
         for r in run_list
     ]

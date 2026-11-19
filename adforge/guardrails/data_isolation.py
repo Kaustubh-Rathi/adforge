@@ -68,9 +68,7 @@ class TenantScope:
 
 
 @asynccontextmanager
-async def tenant_scope(
-    tenant_id: str, campaign_id: UUID
-) -> AsyncIterator[TenantScope]:
+async def tenant_scope(tenant_id: str, campaign_id: UUID) -> AsyncIterator[TenantScope]:
     """Context manager that creates a TenantScope and audits its lifecycle.
 
     All agent execution + storage calls happen inside this block. Exit log

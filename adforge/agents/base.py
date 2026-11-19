@@ -20,6 +20,7 @@ Agents must NEVER:
     * Call ad-platform MCPs without rate-limit check
     * Persist anything outside the guardrails.audit_log
 """
+
 from __future__ import annotations
 
 import json
@@ -64,9 +65,7 @@ _RETRY_ATTEMPTS = 3
 
 def _is_retryable_llm_error(exc: BaseException) -> bool:
     """Retry transient transport errors, but never an exhausted quota."""
-    return isinstance(exc, LLMTransportError) and not isinstance(
-        exc, LLMQuotaExceededError
-    )
+    return isinstance(exc, LLMTransportError) and not isinstance(exc, LLMQuotaExceededError)
 
 
 class AgentResult:
@@ -115,7 +114,7 @@ class BaseAgent(ABC):
         try:
             agent_input = AgentInput(**raw_input)
         except Exception as e:
-            output = AgentOutput(
+            input_failure = AgentOutput(
                 request_id=raw_input.get("request_id") or UUID(int=0),
                 tenant_id=raw_input.get("tenant_id", "unknown"),
                 campaign_id=raw_input.get("campaign_id") or UUID(int=0),
@@ -123,17 +122,19 @@ class BaseAgent(ABC):
                 payload={},
                 error=f"input validation failed: {e}",
             )
-            return AgentResult(output)
+            return AgentResult(input_failure)
 
         async with tenant_scope(agent_input.tenant_id, agent_input.campaign_id) as scope:
-            await self._safe_audit(AuditEvent(
-                event_type=AuditEventType.AGENT_START,
-                tenant_id=scope.tenant_id,
-                campaign_id=scope.campaign_id,
-                agent_name=self.name,
-                request_id=agent_input.request_id,
-                payload={"input_summary": self._summarise(agent_input)},
-            ))
+            await self._safe_audit(
+                AuditEvent(
+                    event_type=AuditEventType.AGENT_START,
+                    tenant_id=scope.tenant_id,
+                    campaign_id=scope.campaign_id,
+                    agent_name=self.name,
+                    request_id=agent_input.request_id,
+                    payload={"input_summary": self._summarise(agent_input)},
+                )
+            )
 
             started_at = datetime.now(UTC)
             output: AgentOutput
@@ -148,14 +149,16 @@ class BaseAgent(ABC):
                     payload={},
                     error=str(e),
                 )
-                await self._safe_audit(AuditEvent(
-                    event_type=AuditEventType.GUARDRAIL_FIRE,
-                    tenant_id=scope.tenant_id,
-                    campaign_id=scope.campaign_id,
-                    agent_name=self.name,
-                    request_id=agent_input.request_id,
-                    payload={"error": str(e), "type": type(e).__name__},
-                ))
+                await self._safe_audit(
+                    AuditEvent(
+                        event_type=AuditEventType.GUARDRAIL_FIRE,
+                        tenant_id=scope.tenant_id,
+                        campaign_id=scope.campaign_id,
+                        agent_name=self.name,
+                        request_id=agent_input.request_id,
+                        payload={"error": str(e), "type": type(e).__name__},
+                    )
+                )
             except Exception as e:
                 # Unexpected error — log it loudly, surface to caller.
                 logger.exception("[%s] unexpected failure", self.name)
@@ -167,28 +170,32 @@ class BaseAgent(ABC):
                     payload={},
                     error=f"unexpected error: {type(e).__name__}: {e}",
                 )
-                await self._safe_audit(AuditEvent(
-                    event_type=AuditEventType.AGENT_ERROR,
+                await self._safe_audit(
+                    AuditEvent(
+                        event_type=AuditEventType.AGENT_ERROR,
+                        tenant_id=scope.tenant_id,
+                        campaign_id=scope.campaign_id,
+                        agent_name=self.name,
+                        request_id=agent_input.request_id,
+                        payload={"error": str(e), "type": type(e).__name__},
+                    )
+                )
+
+            finished_at = datetime.now(UTC)
+            await self._safe_audit(
+                AuditEvent(
+                    event_type=AuditEventType.AGENT_END,
                     tenant_id=scope.tenant_id,
                     campaign_id=scope.campaign_id,
                     agent_name=self.name,
                     request_id=agent_input.request_id,
-                    payload={"error": str(e), "type": type(e).__name__},
-                ))
-
-            finished_at = datetime.now(UTC)
-            await self._safe_audit(AuditEvent(
-                event_type=AuditEventType.AGENT_END,
-                tenant_id=scope.tenant_id,
-                campaign_id=scope.campaign_id,
-                agent_name=self.name,
-                request_id=agent_input.request_id,
-                payload={
-                    "duration_seconds": (finished_at - started_at).total_seconds(),
-                    "ok": output.error is None,
-                    "usage": output.usage,
-                },
-            ))
+                    payload={
+                        "duration_seconds": (finished_at - started_at).total_seconds(),
+                        "ok": output.error is None,
+                        "usage": output.usage,
+                    },
+                )
+            )
 
             # Persist the agent run (best-effort; non-fatal if DB is down).
             await self._persist_run(agent_input, output, started_at, finished_at)
@@ -218,15 +225,11 @@ class BaseAgent(ABC):
                 llm, messages, tool_schemas, tool_index, scope, agent_input
             )
         else:
-            response = await self._chat_audited(
-                llm, messages, scope, agent_input
-            )
+            response = await self._chat_audited(llm, messages, scope, agent_input)
             content = response.content
             usage = response.usage
 
-        payload = await self._parse_with_repair(
-            llm, messages, content, agent_input
-        )
+        payload = await self._parse_with_repair(llm, messages, content, agent_input)
 
         return AgentOutput(
             request_id=agent_input.request_id,
@@ -330,44 +333,46 @@ class BaseAgent(ABC):
             if not response.tool_calls:
                 if response.content.strip():
                     return response.content, usage
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        "Return the final JSON object now. Do not call any more "
-                        "tools."
-                    ),
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Return the final JSON object now. Do not call any more tools."
+                        ),
+                    }
+                )
                 continue
 
-            messages.append({
-                "role": "assistant",
-                "content": response.content or "",
-                "tool_calls": [
-                    {
-                        "id": call.id,
-                        "type": "function",
-                        "function": {
-                            "name": call.name,
-                            "arguments": json.dumps(call.arguments),
-                        },
-                    }
-                    for call in response.tool_calls
-                ],
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": response.content or "",
+                    "tool_calls": [
+                        {
+                            "id": call.id,
+                            "type": "function",
+                            "function": {
+                                "name": call.name,
+                                "arguments": json.dumps(call.arguments),
+                            },
+                        }
+                        for call in response.tool_calls
+                    ],
+                }
+            )
             for call in response.tool_calls:
-                result = await self._invoke_tool(
-                    call, tool_index, scope, agent_input
+                result = await self._invoke_tool(call, tool_index, scope, agent_input)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "name": call.name,
+                        "content": result,
+                    }
                 )
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": call.id,
-                    "name": call.name,
-                    "content": result,
-                })
 
         raise GuardrailError(
-            f"{self.name} exceeded the read-only tool-call limit "
-            f"({max_iterations} iterations)"
+            f"{self.name} exceeded the read-only tool-call limit ({max_iterations} iterations)"
         )
 
     async def _invoke_tool(
@@ -380,40 +385,56 @@ class BaseAgent(ABC):
         """Execute one read-only tool with tenant headers injected."""
         entry = tool_index.get(call.name)
         if entry is None:
-            result = json.dumps({
-                "error": "tool_not_available",
-                "tool": call.name,
-                "detail": "Only read-only tools are exposed to agents.",
-            })
+            result = json.dumps(
+                {
+                    "error": "tool_not_available",
+                    "tool": call.name,
+                    "detail": "Only read-only tools are exposed to agents.",
+                }
+            )
             await self._audit_tool_call(
-                scope, agent_input, call.name, "unknown", call.arguments,
-                ok=False, result_chars=len(result),
+                scope,
+                agent_input,
+                call.name,
+                "unknown",
+                call.arguments,
+                ok=False,
+                result_chars=len(result),
             )
             return result
 
         tool, server = entry
         ok = True
         try:
-            raw = await tool.ainvoke({
-                **call.arguments,
-                "headers": scope.as_headers(),
-            })
+            raw = await tool.ainvoke(
+                {
+                    **call.arguments,
+                    "headers": scope.as_headers(),
+                }
+            )
             result = self._tool_result_text(raw)
         except Exception as exc:  # noqa: BLE001 - report to the model
             ok = False
-            result = json.dumps({
-                "error": "tool_call_failed",
-                "tool": call.name,
-                "detail": f"{type(exc).__name__}: {exc}",
-            })
+            result = json.dumps(
+                {
+                    "error": "tool_call_failed",
+                    "tool": call.name,
+                    "detail": f"{type(exc).__name__}: {exc}",
+                }
+            )
 
         limit = max(512, int(self._settings.agent_max_tool_result_chars))
         if len(result) > limit:
             result = result[:limit] + "\n...[truncated]"
 
         await self._audit_tool_call(
-            scope, agent_input, call.name, server, call.arguments,
-            ok=ok, result_chars=len(result),
+            scope,
+            agent_input,
+            call.name,
+            server,
+            call.arguments,
+            ok=ok,
+            result_chars=len(result),
         )
         return result
 
@@ -448,20 +469,22 @@ class BaseAgent(ABC):
         ok: bool,
         result_chars: int,
     ) -> None:
-        await self._safe_audit(AuditEvent(
-            event_type=AuditEventType.MCP_TOOL_CALL,
-            tenant_id=scope.tenant_id,
-            campaign_id=scope.campaign_id,
-            agent_name=self.name,
-            request_id=agent_input.request_id,
-            payload={
-                "tool": tool_name,
-                "server": server,
-                "argument_keys": sorted(arguments),
-                "ok": ok,
-                "result_chars": result_chars,
-            },
-        ))
+        await self._safe_audit(
+            AuditEvent(
+                event_type=AuditEventType.MCP_TOOL_CALL,
+                tenant_id=scope.tenant_id,
+                campaign_id=scope.campaign_id,
+                agent_name=self.name,
+                request_id=agent_input.request_id,
+                payload={
+                    "tool": tool_name,
+                    "server": server,
+                    "argument_keys": sorted(arguments),
+                    "ok": ok,
+                    "result_chars": result_chars,
+                },
+            )
+        )
 
     async def _chat_audited(
         self,
@@ -473,38 +496,42 @@ class BaseAgent(ABC):
         tools: list[dict[str, Any]] | None = None,
     ) -> LLMResponse:
         """Call the LLM with auditing + transient-error retry."""
-        await self._safe_audit(AuditEvent(
-            event_type=AuditEventType.LLM_CALL,
-            tenant_id=scope.tenant_id,
-            campaign_id=scope.campaign_id,
-            agent_name=self.name,
-            request_id=agent_input.request_id,
-            payload={
-                "model": self._settings.llm_model or self._settings.llm_provider,
-                "message_count": len(messages),
-                "tool_count": len(tools or []),
-            },
-        ))
+        await self._safe_audit(
+            AuditEvent(
+                event_type=AuditEventType.LLM_CALL,
+                tenant_id=scope.tenant_id,
+                campaign_id=scope.campaign_id,
+                agent_name=self.name,
+                request_id=agent_input.request_id,
+                payload={
+                    "model": self._settings.llm_model or self._settings.llm_provider,
+                    "message_count": len(messages),
+                    "tool_count": len(tools or []),
+                },
+            )
+        )
 
         response = await self._chat_with_retry(llm, messages, tools=tools)
 
-        await self._safe_audit(AuditEvent(
-            event_type=AuditEventType.LLM_RESPONSE,
-            tenant_id=scope.tenant_id,
-            campaign_id=scope.campaign_id,
-            agent_name=self.name,
-            request_id=agent_input.request_id,
-            payload={
-                "finish_reason": response.finish_reason,
-                "content_length": len(response.content),
-                "tool_calls": [call.name for call in response.tool_calls],
-                "usage": {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens,
+        await self._safe_audit(
+            AuditEvent(
+                event_type=AuditEventType.LLM_RESPONSE,
+                tenant_id=scope.tenant_id,
+                campaign_id=scope.campaign_id,
+                agent_name=self.name,
+                request_id=agent_input.request_id,
+                payload={
+                    "finish_reason": response.finish_reason,
+                    "content_length": len(response.content),
+                    "tool_calls": [call.name for call in response.tool_calls],
+                    "usage": {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens,
+                    },
                 },
-            },
-        ))
+            )
+        )
         return response
 
     @staticmethod
@@ -562,10 +589,7 @@ class BaseAgent(ABC):
             {"role": "assistant", "content": content},
             {
                 "role": "user",
-                "content": (
-                    f"{_REPAIR_PROMPT}\n\n"
-                    f"Validation errors: {first_error.errors}"
-                ),
+                "content": (f"{_REPAIR_PROMPT}\n\nValidation errors: {first_error.errors}"),
             },
         ]
         repaired = await self._chat_with_retry(llm, repair_messages)

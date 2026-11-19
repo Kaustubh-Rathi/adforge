@@ -4,6 +4,7 @@ Every provider is exercised against recorded HTTP shapes via ``respx`` so the
 normalisation + error paths are deterministic. Persistence is covered by the
 embedded-Postgres integration suite.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -153,15 +154,11 @@ class TestDispatchGuards:
         )
         for channel in ("google", "meta", "linkedin", "tiktok"):
             with pytest.raises(AdPlatformError, match="campaign_external_id"):
-                await fetch_channel_snapshots(
-                    _scope(), channel, CAMPAIGN_ID, start=START, end=END
-                )
+                await fetch_channel_snapshots(_scope(), channel, CAMPAIGN_ID, start=START, end=END)
 
     async def test_unsupported_channel_raises(self):
         with pytest.raises(AdPlatformError, match="Unsupported"):
-            await fetch_channel_snapshots(
-                _scope(), "pinterest", CAMPAIGN_ID, start=START, end=END
-            )
+            await fetch_channel_snapshots(_scope(), "pinterest", CAMPAIGN_ID, start=START, end=END)
 
     async def test_end_before_start_raises(self):
         with pytest.raises(AdPlatformError, match="end date"):
@@ -184,9 +181,7 @@ class TestDispatchGuards:
             return []
 
         monkeypatch.setattr(fetcher, "fetch_google", fake_fetch)
-        await fetch_channel_snapshots(
-            _scope(), "google", CAMPAIGN_ID, external_id="1"
-        )
+        await fetch_channel_snapshots(_scope(), "google", CAMPAIGN_ID, external_id="1")
         assert (captured["end"] - captured["start"]).days == 6
 
     async def test_fetch_all_channels_returns_latest(self, monkeypatch):
@@ -235,9 +230,7 @@ class TestGoogle:
     async def test_success(self, monkeypatch):
         await self._creds(monkeypatch)
         respx.post(GOOGLE_TOKEN_URL).mock(
-            return_value=httpx.Response(
-                200, json={"access_token": "tok", "expires_in": 3600}
-            )
+            return_value=httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
         )
         route = respx.post(
             "https://googleads.googleapis.com/v21/customers/1234567890/googleAds:searchStream"
@@ -335,9 +328,7 @@ class TestGoogle:
     @respx.mock
     async def test_token_response_without_access_token(self, monkeypatch):
         await self._creds(monkeypatch)
-        respx.post(GOOGLE_TOKEN_URL).mock(
-            return_value=httpx.Response(200, json={})
-        )
+        respx.post(GOOGLE_TOKEN_URL).mock(return_value=httpx.Response(200, json={}))
         async with httpx.AsyncClient() as client:
             with pytest.raises(AdPlatformError, match="no access_token"):
                 await fetch_google(
@@ -374,9 +365,7 @@ class TestGoogle:
             return_value=httpx.Response(200, json={"access_token": "tok"})
         )
         respx.post(url__regex=r"https://googleads\.googleapis\.com/.*").mock(
-            return_value=httpx.Response(
-                200, json={"results": [{"segments": {}, "metrics": {}}]}
-            )
+            return_value=httpx.Response(200, json={"results": [{"segments": {}, "metrics": {}}]})
         )
         async with httpx.AsyncClient() as client:
             snapshots = await fetch_google(
@@ -416,9 +405,7 @@ class TestMeta:
                                 {"action_type": "purchase", "value": "4"},
                                 {"action_type": "like", "value": "9"},
                             ],
-                            "action_values": [
-                                {"action_type": "purchase", "value": "80.0"}
-                            ],
+                            "action_values": [{"action_type": "purchase", "value": "80.0"}],
                         },
                         {
                             "campaign_id": "other",
@@ -528,9 +515,7 @@ class TestLinkedIn:
     @respx.mock
     async def test_http_error(self, monkeypatch):
         await self._creds(monkeypatch)
-        respx.get(LINKEDIN_ANALYTICS_URL).mock(
-            return_value=httpx.Response(500, text="down")
-        )
+        respx.get(LINKEDIN_ANALYTICS_URL).mock(return_value=httpx.Response(500, text="down"))
         async with httpx.AsyncClient() as client:
             with pytest.raises(AdPlatformError, match="adAnalytics failed"):
                 await fetch_linkedin(
@@ -609,9 +594,7 @@ class TestTikTok:
     async def test_api_error_code(self, monkeypatch):
         await self._creds(monkeypatch)
         respx.get(url__regex=r"https://business-api\.tiktok\.com/.*").mock(
-            return_value=httpx.Response(
-                200, json={"code": 40001, "message": "invalid advertiser"}
-            )
+            return_value=httpx.Response(200, json={"code": 40001, "message": "invalid advertiser"})
         )
         async with httpx.AsyncClient() as client:
             with pytest.raises(AdPlatformError, match="invalid advertiser"):
@@ -656,6 +639,7 @@ class TestDispatchLive:
             async def _fetch(client, *, campaign_id, external_id, start, end):
                 called.append(name)
                 return []
+
             return _fetch
 
         for channel in ("google", "meta", "linkedin", "tiktok"):

@@ -6,6 +6,7 @@ as the visual anchor. All visuals come from ``adforge.dashboard.theme`` so the
 sub-pages stay consistent. All data comes from ``adforge.dashboard.api_client``
 — the dashboard never calls the API directly.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -397,7 +398,7 @@ af_caption(
 
 st.markdown(
     '<div class="af-caption" style="margin-top:1.6rem;border-top:1px solid #D9DFE5;'
-    "padding-top:0.9rem;\">"
+    'padding-top:0.9rem;">'
     "AdForge runs seven specialist agents over one campaign graph. KPI figures in dev "
     "are deterministic mocks (is_mock) until real ad-platform credentials are "
     "configured.</div>",

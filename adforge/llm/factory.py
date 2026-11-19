@@ -1,4 +1,5 @@
 """LLM factory — returns the configured provider (cached)."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -20,15 +21,19 @@ def get_llm() -> LLMProvider:
 
     if provider == "glm":
         from adforge.llm.zai_glm import ZaiGLMProvider
+
         return ZaiGLMProvider()
     elif provider == "openai":
         from adforge.llm.openai_provider import OpenAIProvider
+
         return OpenAIProvider()
     elif provider == "anthropic":
         from adforge.llm.anthropic_provider import AnthropicProvider
+
         return AnthropicProvider()
     elif provider == "opencode":
         from adforge.llm.opencode_provider import OpencodeProvider
+
         return OpencodeProvider()
     else:  # pragma: no cover
         raise ValueError(f"Unknown LLM provider: {provider}")

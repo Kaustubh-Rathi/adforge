@@ -14,6 +14,7 @@ Behavior:
 The LLM is never given the schemas of write tools. Only the orchestrator's
 post-approval publish step can call them.
 """
+
 from __future__ import annotations
 
 import base64
@@ -104,12 +105,7 @@ def _verify_approval_token(
     token: str, campaign_id: str, operation: str, *, tenant_id: str = ""
 ) -> bool:
     """Backwards-compatible boolean verification helper."""
-    return (
-        _verify_approval_claims(
-            token, campaign_id, operation, tenant_id=tenant_id
-        )
-        is not None
-    )
+    return _verify_approval_claims(token, campaign_id, operation, tenant_id=tenant_id) is not None
 
 
 async def _consume_approval_token(claims: dict[str, Any]) -> bool:
@@ -140,9 +136,7 @@ async def verify_and_consume_approval(
     (invalid signature, wrong tenant/campaign/operation, wrong reviewer,
     expired, already used, or an unavailable token store).
     """
-    claims = _verify_approval_claims(
-        token, campaign_id, operation, tenant_id=tenant_id
-    )
+    claims = _verify_approval_claims(token, campaign_id, operation, tenant_id=tenant_id)
     if claims is None:
         return None
     if reviewer_email is not None:
@@ -154,27 +148,25 @@ async def verify_and_consume_approval(
     return claims
 
 
-def readonly(func: Callable) -> Callable:
+def readonly(func: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator marking a tool as read-only. No writes allowed."""
     func.__adforge_permission__ = "readonly"  # type: ignore[attr-defined]
     return func
 
 
-def write_operation(*, requires_approval: bool = True) -> Callable:
+def write_operation(*, requires_approval: bool = True) -> Callable[..., Any]:
     """Decorator marking a tool as a write operation.
 
     If ``requires_approval`` is true, the request must carry a valid,
     tenant-bound, single-use approval token.
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         func.__adforge_permission__ = "write"  # type: ignore[attr-defined]
         func.__adforge_requires_approval__ = requires_approval  # type: ignore[attr-defined]
 
         @wraps(func)
-        async def wrapper(
-            *args: Any, headers: dict[str, str] | None = None, **kwargs: Any
-        ) -> str:
+        async def wrapper(*args: Any, headers: dict[str, str] | None = None, **kwargs: Any) -> str:
             if not headers or "X-AdForge-Tenant" not in headers:
                 return json.dumps({"error": "missing tenant header"})
             if requires_approval:
@@ -185,22 +177,24 @@ def write_operation(*, requires_approval: bool = True) -> Callable:
                     token, campaign_id, func.__name__, tenant_id=tenant_id
                 )
                 if claims is None:
-                    return json.dumps({
-                        "error": "approval_required",
-                        "operation": func.__name__,
-                        "campaign_id": campaign_id,
-                        "hint": (
-                            "HITL review must be approved before this write can "
-                            "execute"
-                        ),
-                    })
+                    return json.dumps(
+                        {
+                            "error": "approval_required",
+                            "operation": func.__name__,
+                            "campaign_id": campaign_id,
+                            "hint": ("HITL review must be approved before this write can execute"),
+                        }
+                    )
                 if not await _consume_approval_token(claims):
-                    return json.dumps({
-                        "error": "approval_token_already_used_or_store_unavailable",
-                        "operation": func.__name__,
-                        "campaign_id": campaign_id,
-                    })
-            return await func(*args, headers=headers, **kwargs)
+                    return json.dumps(
+                        {
+                            "error": "approval_token_already_used_or_store_unavailable",
+                            "operation": func.__name__,
+                            "campaign_id": campaign_id,
+                        }
+                    )
+            result: Any = await func(*args, headers=headers, **kwargs)
+            return str(result)
 
         return wrapper
 

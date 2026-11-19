@@ -34,6 +34,7 @@ Each tool call is tenant-isolated via the X-AdForge-Tenant header — see
 guardrails.data_isolation. The MCP server enforces this in the auth_check
 middleware.
 """
+
 from __future__ import annotations
 
 import html as html_lib
@@ -101,6 +102,7 @@ async def _duckduckgo_search(query: str, max_results: int) -> list[dict[str, str
             m = re.search(r"uddg=([^&]+)", raw_url)
             if m:
                 from urllib.parse import unquote
+
                 actual_url = unquote(m.group(1))
             else:
                 actual_url = raw_url
@@ -111,11 +113,13 @@ async def _duckduckgo_search(query: str, max_results: int) -> list[dict[str, str
         title = re.sub(r"<[^>]+>", "", raw_title).strip()
         snippet = re.sub(r"<[^>]+>", "", snippets[i]).strip() if i < len(snippets) else ""
 
-        results.append({
-            "title": title,
-            "url": actual_url,
-            "snippet": snippet[:300],
-        })
+        results.append(
+            {
+                "title": title,
+                "url": actual_url,
+                "snippet": snippet[:300],
+            }
+        )
 
     return results
 
@@ -204,10 +208,7 @@ async def _ddg_lite_search(query: str, max_results: int) -> list[dict[str, str]]
     into numbered markdown links.
     """
     s = get_settings()
-    url = (
-        f"{s.jina_reader_url.rstrip('/')}/"
-        f"https://lite.duckduckgo.com/lite/?q={quote_plus(query)}"
-    )
+    url = f"{s.jina_reader_url.rstrip('/')}/https://lite.duckduckgo.com/lite/?q={quote_plus(query)}"
     headers = {"User-Agent": s.external_user_agent}
     async with httpx.AsyncClient(
         timeout=s.external_http_timeout, headers=headers, trust_env=False
@@ -273,9 +274,7 @@ async def _bing_rss_search(query: str, max_results: int) -> list[dict[str, str]]
     async with httpx.AsyncClient(
         timeout=s.external_http_timeout, headers=headers, trust_env=False
     ) as client:
-        resp = await client.get(
-            _BING_RSS_URL, params={"q": query, "format": "rss"}
-        )
+        resp = await client.get(_BING_RSS_URL, params={"q": query, "format": "rss"})
         if resp.status_code != 200:
             return []
         raw = resp.text
@@ -332,11 +331,13 @@ async def _wikipedia_search(query: str, n: int) -> list[dict[str, str]]:
             if extract_resp.status_code == 200:
                 pages = extract_resp.json().get("query", {}).get("pages", {})
                 extract = next(iter(pages.values())).get("extract", "")
-                results.append({
-                    "title": title,
-                    "url": url,
-                    "snippet": extract[:300] if extract else "",
-                })
+                results.append(
+                    {
+                        "title": title,
+                        "url": url,
+                        "snippet": extract[:300] if extract else "",
+                    }
+                )
             else:
                 results.append({"title": title, "url": url, "snippet": ""})
         return results
@@ -352,9 +353,7 @@ async def _tavily_search(query: str, max_results: int) -> dict[str, Any]:
     s = get_settings()
     if not s.tavily_api_key:
         return {"error": "no_tavily_key"}
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.post(
             f"{s.tavily_base_url.rstrip('/')}/search",
             json={
@@ -368,7 +367,11 @@ async def _tavily_search(query: str, max_results: int) -> dict[str, Any]:
             return {"error": f"tavily_{resp.status_code}"}
         data = resp.json()
     results = [
-        {"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("content", "")[:300]}
+        {
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "snippet": r.get("content", "")[:300],
+        }
         for r in data.get("results", [])
     ]
     return {"answer": data.get("answer", ""), "results": results}
@@ -381,7 +384,9 @@ async def _tavily_search(query: str, max_results: int) -> dict[str, Any]:
 
 @mcp.tool(annotations=READ_ONLY)
 @readonly
-async def web_search(query: str, max_results: int = 5, headers: dict[str, str] | None = None) -> str:
+async def web_search(
+    query: str, max_results: int = 5, headers: dict[str, str] | None = None
+) -> str:
     """Search the web using a multi-provider chain. Returns JSON of results.
 
     Tries providers in this order:
@@ -400,57 +405,69 @@ async def web_search(query: str, max_results: int = 5, headers: dict[str, str] |
     # Try DuckDuckGo first — most general
     ddg_results = await _duckduckgo_search(query, max_results)
     if ddg_results:
-        return json.dumps({
-            "provider": "duckduckgo",
-            "query": query,
-            "results": ddg_results,
-        })
+        return json.dumps(
+            {
+                "provider": "duckduckgo",
+                "query": query,
+                "results": ddg_results,
+            }
+        )
 
     # DuckDuckGo Lite via Jina Reader — DuckDuckGo answers with an anomaly
     # page (HTTP 200, zero parsed results) on some networks.
     lite_results = await _ddg_lite_search(query, max_results)
     if lite_results:
-        return json.dumps({
-            "provider": "ddg_lite",
-            "query": query,
-            "results": lite_results,
-        })
+        return json.dumps(
+            {
+                "provider": "ddg_lite",
+                "query": query,
+                "results": lite_results,
+            }
+        )
 
     # Bing RSS endpoint — Bing's HTML SERP is bot-blocked but format=rss
     # still returns real, machine-readable results.
     rss_results = await _bing_rss_search(query, max_results)
     if rss_results:
-        return json.dumps({
-            "provider": "bing_rss",
-            "query": query,
-            "results": rss_results,
-        })
+        return json.dumps(
+            {
+                "provider": "bing_rss",
+                "query": query,
+                "results": rss_results,
+            }
+        )
 
     # Wikipedia fallback — good for definitional / encyclopedic queries
     wiki_results = await _wikipedia_search(query, max_results)
     if wiki_results:
-        return json.dumps({
-            "provider": "wikipedia",
-            "query": query,
-            "results": wiki_results,
-        })
+        return json.dumps(
+            {
+                "provider": "wikipedia",
+                "query": query,
+                "results": wiki_results,
+            }
+        )
 
     # Tavily paid fallback
     tavily = await _tavily_search(query, max_results)
     if "error" not in tavily:
-        return json.dumps({
-            "provider": "tavily",
-            "query": query,
-            "results": tavily["results"],
-            "answer": tavily.get("answer", ""),
-        })
+        return json.dumps(
+            {
+                "provider": "tavily",
+                "query": query,
+                "results": tavily["results"],
+                "answer": tavily.get("answer", ""),
+            }
+        )
 
-    return json.dumps({
-        "provider": "none",
-        "query": query,
-        "results": [],
-        "error": "all search providers failed; no simulated results returned",
-    })
+    return json.dumps(
+        {
+            "provider": "none",
+            "query": query,
+            "results": [],
+            "error": "all search providers failed; no simulated results returned",
+        }
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -475,7 +492,8 @@ async def serp_scrape(query: str, top_n: int = 10, headers: dict[str, str] | Non
     web_search.
     """
     _check_tenant(headers)
-    return await web_search(query, max_results=top_n, headers=headers)
+    result: str = await web_search(query, max_results=top_n, headers=headers)
+    return result
 
 
 async def _google_suggest(query: str, n: int) -> list[str]:
@@ -502,7 +520,9 @@ async def _google_suggest(query: str, n: int) -> list[str]:
 
 @mcp.tool(annotations=READ_ONLY)
 @readonly
-async def keyword_clusters(seed_keyword: str, n: int = 25, headers: dict[str, str] | None = None) -> str:
+async def keyword_clusters(
+    seed_keyword: str, n: int = 25, headers: dict[str, str] | None = None
+) -> str:
     """Return real keyword suggestions for a seed keyword.
 
     Uses Google's public autocomplete endpoint. For search-volume and
@@ -512,11 +532,13 @@ async def keyword_clusters(seed_keyword: str, n: int = 25, headers: dict[str, st
     n = max(1, min(n, 100))
     keywords = await _google_suggest(seed_keyword, n)
     if not keywords:
-        return json.dumps({
-            "seed": seed_keyword,
-            "clusters": [],
-            "error": "keyword suggestions unavailable; no simulated keywords returned",
-        })
+        return json.dumps(
+            {
+                "seed": seed_keyword,
+                "clusters": [],
+                "error": "keyword suggestions unavailable; no simulated keywords returned",
+            }
+        )
     return json.dumps({"seed": seed_keyword, "clusters": keywords, "source": "google_suggest"})
 
 
@@ -531,14 +553,14 @@ async def competitor_creatives(domain: str, headers: dict[str, str] | None = Non
     _check_tenant(headers)
     s = get_settings()
     if not s.meta_ad_library_token:
-        return json.dumps({
-            "domain": domain,
-            "creatives": [],
-            "error": "meta_ad_library_token_not_configured",
-        })
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+        return json.dumps(
+            {
+                "domain": domain,
+                "creatives": [],
+                "error": "meta_ad_library_token_not_configured",
+            }
+        )
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         resp = await client.get(
             f"{s.meta_graph_base.rstrip('/')}/{s.meta_graph_api_version}/ads_archive",
             params={
@@ -551,22 +573,26 @@ async def competitor_creatives(domain: str, headers: dict[str, str] | None = Non
             },
         )
     if resp.status_code >= 400:
-        return json.dumps({
-            "domain": domain,
-            "creatives": [],
-            "error": f"meta_ad_library_http_{resp.status_code}",
-            "detail": resp.text[:300],
-        })
+        return json.dumps(
+            {
+                "domain": domain,
+                "creatives": [],
+                "error": f"meta_ad_library_http_{resp.status_code}",
+                "detail": resp.text[:300],
+            }
+        )
     body = resp.json()
     creatives = []
     for ad in body.get("data", []):
-        creatives.append({
-            "id": ad.get("id"),
-            "headline": (ad.get("ad_creative_link_titles") or [""])[0],
-            "primary_text": (ad.get("ad_creative_bodies") or [""])[0],
-            "caption": (ad.get("ad_creative_link_captions") or [""])[0],
-            "platform": "meta",
-        })
+        creatives.append(
+            {
+                "id": ad.get("id"),
+                "headline": (ad.get("ad_creative_link_titles") or [""])[0],
+                "primary_text": (ad.get("ad_creative_bodies") or [""])[0],
+                "caption": (ad.get("ad_creative_link_captions") or [""])[0],
+                "platform": "meta",
+            }
+        )
     return json.dumps({"domain": domain, "creatives": creatives, "count": len(creatives)})
 
 
@@ -625,10 +651,12 @@ async def trends_interest(
             },
         )
         if explore.status_code != 200:
-            return await _error({
-                "error": f"google_trends_http_{explore.status_code}",
-                "detail": explore.text[:300],
-            })
+            return await _error(
+                {
+                    "error": f"google_trends_http_{explore.status_code}",
+                    "detail": explore.text[:300],
+                }
+            )
         try:
             explore_body = json.loads(_strip_trends_prefix(explore.text))
         except ValueError:
@@ -645,20 +673,24 @@ async def trends_interest(
                 "hl": "en-US",
                 "tz": 0,
                 "token": token,
-                "req": json.dumps({
-                    "time": timeframe,
-                    "resolution": "WEEK",
-                    "locale": "en-US",
-                    "comparisonItem": comparison_item,
-                    "requestOptions": {"property": "", "backend": "IZG", "category": 0},
-                }),
+                "req": json.dumps(
+                    {
+                        "time": timeframe,
+                        "resolution": "WEEK",
+                        "locale": "en-US",
+                        "comparisonItem": comparison_item,
+                        "requestOptions": {"property": "", "backend": "IZG", "category": 0},
+                    }
+                ),
             },
         )
         if multiline.status_code != 200:
-            return await _error({
-                "error": f"google_trends_http_{multiline.status_code}",
-                "detail": multiline.text[:300],
-            })
+            return await _error(
+                {
+                    "error": f"google_trends_http_{multiline.status_code}",
+                    "detail": multiline.text[:300],
+                }
+            )
         try:
             data = json.loads(_strip_trends_prefix(multiline.text))
         except ValueError:
@@ -673,14 +705,16 @@ async def trends_interest(
     if not points:
         return await _error({"error": "google_trends_no_timeline_data", "points": []})
     average = round(sum(p["value"] for p in points) / len(points), 1)
-    return json.dumps({
-        "keyword": keyword,
-        "geo": geo,
-        "timeframe": timeframe,
-        "points": points,
-        "average": average,
-        "source": "google_trends",
-    })
+    return json.dumps(
+        {
+            "keyword": keyword,
+            "geo": geo,
+            "timeframe": timeframe,
+            "points": points,
+            "average": average,
+            "source": "google_trends",
+        }
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -700,9 +734,11 @@ async def fetch_page(url: str, headers: dict[str, str] | None = None) -> str:
     ) as client:
         resp = await client.get(f"{s.jina_reader_url.rstrip('/')}/{url}")
     if resp.status_code != 200:
-        return json.dumps({
-            "url": url,
-            "error": f"jina_reader_http_{resp.status_code}",
-            "detail": resp.text[:200],
-        })
+        return json.dumps(
+            {
+                "url": url,
+                "error": f"jina_reader_http_{resp.status_code}",
+                "detail": resp.text[:200],
+            }
+        )
     return resp.text[: s.agent_max_tool_result_chars]

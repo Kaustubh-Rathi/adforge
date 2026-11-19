@@ -3,6 +3,7 @@
 Covers engine lifecycle, transaction semantics, and the developer seed script
 against the real schema rather than mocks.
 """
+
 from __future__ import annotations
 
 import json
@@ -104,18 +105,20 @@ class TestSeed:
         factory = session_module.get_session_factory()
         async with factory() as session:
             campaign = (
-                await session.execute(
-                    text(
-                        "SELECT id, total_spend_usd, total_revenue_usd FROM campaigns "
-                        "WHERE tenant_id = 'seed_tenant'"
+                (
+                    await session.execute(
+                        text(
+                            "SELECT id, total_spend_usd, total_revenue_usd FROM campaigns "
+                            "WHERE tenant_id = 'seed_tenant'"
+                        )
                     )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             kpi_count = (
                 await session.execute(
-                    text(
-                        "SELECT COUNT(*) FROM kpi_snapshots WHERE tenant_id = 'seed_tenant'"
-                    )
+                    text("SELECT COUNT(*) FROM kpi_snapshots WHERE tenant_id = 'seed_tenant'")
                 )
             ).scalar_one()
 
@@ -139,9 +142,7 @@ class TestSeed:
         }
         assert all(row["source"] == "seed" for row in rows["snapshots"])
 
-    async def test_reseeding_is_idempotent(
-        self, db_env, tmp_path, monkeypatch, capsys
-    ):
+    async def test_reseeding_is_idempotent(self, db_env, tmp_path, monkeypatch, capsys):
         """`make seed` twice must not clone the demo campaigns and their KPIs."""
         examples = [
             {

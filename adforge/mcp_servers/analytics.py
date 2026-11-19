@@ -8,6 +8,7 @@ Tools:
 The KPI/Analytics agent calls persist_kpi_snapshot after fetching from the
 ad platforms. The dashboard calls query_kpis / aggregate_kpis to render charts.
 """
+
 from __future__ import annotations
 
 import json
@@ -75,19 +76,14 @@ async def persist_kpi_snapshot(snapshot_json: str, headers: dict[str, str] | Non
     if snap.get("is_mock"):
         return json.dumps({"error": "simulated KPI rows are not accepted"})
     platform_date = _coerce_date(
-        snap.get("platform_date")
-        or snap.get("captured_at", datetime.now(UTC).isoformat())
+        snap.get("platform_date") or snap.get("captured_at", datetime.now(UTC).isoformat())
     )
-    captured_at = _coerce_datetime(
-        snap.get("captured_at", datetime.now(UTC).isoformat())
-    )
+    captured_at = _coerce_datetime(snap.get("captured_at", datetime.now(UTC).isoformat()))
 
     factory = session_module.get_session_factory()
     async with factory() as session:
         owned = await session.execute(
-            sql_text(
-                "SELECT 1 FROM campaigns WHERE id = :cid AND tenant_id = :tid"
-            ),
+            sql_text("SELECT 1 FROM campaigns WHERE id = :cid AND tenant_id = :tid"),
             {"cid": str(snap["campaign_id"]), "tid": tenant_id},
         )
         if owned.fetchone() is None:
@@ -160,14 +156,18 @@ async def query_kpis(
                 "WHERE tenant_id = :tid AND campaign_id = :cid AND channel = :ch "
                 "AND platform_date >= :since ORDER BY platform_date DESC, captured_at DESC"
             )
-            result = await session.execute(q, {"tid": tenant_id, "cid": campaign_id, "ch": channel, "since": since})
+            result = await session.execute(
+                q, {"tid": tenant_id, "cid": campaign_id, "ch": channel, "since": since}
+            )
         else:
             q = sql_text(
                 "SELECT * FROM kpi_snapshots "
                 "WHERE tenant_id = :tid AND campaign_id = :cid AND platform_date >= :since "
                 "ORDER BY platform_date DESC, captured_at DESC"
             )
-            result = await session.execute(q, {"tid": tenant_id, "cid": campaign_id, "since": since})
+            result = await session.execute(
+                q, {"tid": tenant_id, "cid": campaign_id, "since": since}
+            )
         rows = [_jsonable_row(dict(r._mapping)) for r in result]
     return json.dumps({"snapshots": rows, "count": len(rows)})
 

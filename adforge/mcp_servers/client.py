@@ -10,12 +10,13 @@ This is the integration point with the open-source ecosystem:
 Agents call ``get_mcp_tools("research")`` and get a list of LangChain Tools
 backed by the appropriate MCP server. Tools are cached per server name.
 """
+
 from __future__ import annotations
 
 import logging
 import sys
 from functools import lru_cache
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from adforge.config import get_settings
 
@@ -51,7 +52,7 @@ def _build_client() -> MultiServerMCPClient:
     from langchain_mcp_adapters.client import MultiServerMCPClient  # post-migration name
 
     s = get_settings()
-    servers: dict[str, dict] = {}
+    servers: dict[str, Any] = {}
 
     # Local servers (always available)
     if s.mcp_transport == "sse":
@@ -111,13 +112,10 @@ def _is_read_only(tool: object) -> bool:
     metadata = getattr(tool, "metadata", None) or {}
     if not isinstance(metadata, dict):
         return False
-    return (
-        metadata.get("readOnlyHint") is True
-        and metadata.get("destructiveHint") is not True
-    )
+    return metadata.get("readOnlyHint") is True and metadata.get("destructiveHint") is not True
 
 
-async def get_mcp_tools(server: ServerName, *, read_only: bool = True) -> list:
+async def get_mcp_tools(server: ServerName, *, read_only: bool = True) -> list[Any]:
     """Return LangChain Tools exposed by the given MCP server.
 
     ``read_only`` defaults to ``True`` so an LLM-facing caller can never

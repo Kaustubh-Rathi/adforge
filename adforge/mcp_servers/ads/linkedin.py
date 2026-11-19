@@ -5,6 +5,7 @@ This intentionally does not use the unofficial ``linkedin-api`` package: that
 library targets LinkedIn's private website API, is not an Ads SDK, and pins an
 old ``lxml`` range that has no Python 3.14 wheels.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,20 +48,24 @@ async def get_ad_analytics(
     tenant_id = _check_auth(headers)
     s = get_settings()
     if not s.linkedin_access_token:
-        return json.dumps({
-            "error": "linkedin_not_configured",
-            "detail": "Set LINKEDIN_ACCESS_TOKEN to enable LinkedIn reporting.",
-        })
+        return json.dumps(
+            {
+                "error": "linkedin_not_configured",
+                "detail": "Set LINKEDIN_ACCESS_TOKEN to enable LinkedIn reporting.",
+            }
+        )
 
     campaign_ids = [c for c in (campaign_ids or []) if str(c).strip()]
     header_campaign = (headers or {}).get("X-AdForge-Campaign", "")
     if not campaign_ids and header_campaign:
         campaign_ids = [header_campaign]
     if not campaign_ids:
-        return json.dumps({
-            "error": "campaign_id_required",
-            "detail": "Pass campaign_ids or the X-AdForge-Campaign header.",
-        })
+        return json.dumps(
+            {
+                "error": "campaign_id_required",
+                "detail": "Pass campaign_ids or the X-AdForge-Campaign header.",
+            }
+        )
     if days_back < 1 or days_back > 90:
         return json.dumps({"error": "days_back must be between 1 and 90"})
 
@@ -69,9 +74,7 @@ async def get_ad_analytics(
     rows: list[dict[str, Any]] = []
     errors: list[str] = []
 
-    async with httpx.AsyncClient(
-        timeout=s.external_http_timeout, trust_env=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=s.external_http_timeout, trust_env=False) as client:
         for external_id in campaign_ids:
             internal_id = uuid5(_NAMESPACE, f"{tenant_id}:{external_id}")
             try:
@@ -87,12 +90,14 @@ async def get_ad_analytics(
             except Exception as exc:  # noqa: BLE001 - report per campaign
                 errors.append(f"{external_id}: {type(exc).__name__}: {exc}")
 
-    return json.dumps({
-        "ad_account_id": ad_account_id,
-        "campaign_ids": campaign_ids,
-        "start": start.isoformat(),
-        "end": end.isoformat(),
-        "daily": rows,
-        "count": len(rows),
-        "errors": errors,
-    })
+    return json.dumps(
+        {
+            "ad_account_id": ad_account_id,
+            "campaign_ids": campaign_ids,
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "daily": rows,
+            "count": len(rows),
+            "errors": errors,
+        }
+    )

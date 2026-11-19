@@ -5,6 +5,7 @@ DuckDuckGo-Lite-via-Jina-Reader and Bing RSS fallbacks. Every external
 HTTP call is intercepted with ``respx``. Tools are exercised directly as
 async functions, matching the style of tests/test_research_mcp.py.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,28 +30,33 @@ EXPLORE_URL = f"{TRENDS_BASE}/trends/api/explore"
 MULTILINE_URL = f"{TRENDS_BASE}/trends/api/widgetdata/multiline"
 JINA_URL = "https://r.jina.ai"
 
-EXPLORE_BODY = ")]}'\n" + json.dumps({
-    "widgets": [
-        {"id": "TIMESERIES", "token": "DR45abcdTOKEN", "request": {"time": "today 12-m"}},
-        {"id": "RELATED_QUERIES", "token": "other-token"},
-    ]
-})
-
-MULTILINE_BODY = ")]}'\n" + json.dumps({
-    "default": {
-        "timelineData": [
-            {"formattedTime": "Nov 16 - 22, 2025", "value": [58]},
-            {"formattedTime": "Nov 23 - 29, 2025", "value": [62]},
-            {"formattedTime": "Nov 30 - Dec 6, 2025", "value": [70]},
+EXPLORE_BODY = ")]}'\n" + json.dumps(
+    {
+        "widgets": [
+            {"id": "TIMESERIES", "token": "DR45abcdTOKEN", "request": {"time": "today 12-m"}},
+            {"id": "RELATED_QUERIES", "token": "other-token"},
         ]
     }
-})
+)
+
+MULTILINE_BODY = ")]}'\n" + json.dumps(
+    {
+        "default": {
+            "timelineData": [
+                {"formattedTime": "Nov 16 - 22, 2025", "value": [58]},
+                {"formattedTime": "Nov 23 - 29, 2025", "value": [62]},
+                {"formattedTime": "Nov 30 - Dec 6, 2025", "value": [70]},
+            ]
+        }
+    }
+)
 
 
 def _mock_trends_flow(explore_response=None, multiline_response=None):
     warm = respx.get(WARMUP_URL).mock(
-        return_value=httpx.Response(200, text="<html>ok</html>",
-                                  headers={"Set-Cookie": "NID=test-cookie"})
+        return_value=httpx.Response(
+            200, text="<html>ok</html>", headers={"Set-Cookie": "NID=test-cookie"}
+        )
     )
     explore = respx.get(EXPLORE_URL).mock(
         return_value=explore_response or httpx.Response(200, text=EXPLORE_BODY)
@@ -75,9 +81,7 @@ class TestTrendsInterest:
     @respx.mock
     async def test_happy_path_returns_series(self):
         _mock_trends_flow()
-        payload = json.loads(
-            await trends_interest("crm software", headers=HEADERS)
-        )
+        payload = json.loads(await trends_interest("crm software", headers=HEADERS))
         assert payload["keyword"] == "crm software"
         assert payload["geo"] == "US"
         assert payload["timeframe"] == "today 12-m"
@@ -92,9 +96,7 @@ class TestTrendsInterest:
     @respx.mock
     async def test_request_shape_and_cookie_flow(self):
         warm, explore, multiline = _mock_trends_flow()
-        await trends_interest(
-            "vpn", geo="GB", timeframe="today 3-m", headers=HEADERS
-        )
+        await trends_interest("vpn", geo="GB", timeframe="today 3-m", headers=HEADERS)
         assert warm.call_count == explore.call_count == multiline.call_count == 1
         # Warm-up cookie is carried into the widget requests.
         assert explore.calls[0].request.headers["Cookie"] == "NID=test-cookie"
@@ -116,12 +118,8 @@ class TestTrendsInterest:
         ml_req = json.loads(ml_params["req"])
         assert ml_req["time"] == "today 3-m"
         assert ml_req["resolution"] == "WEEK"
-        assert ml_req["comparisonItem"] == [
-            {"keyword": "vpn", "geo": "GB", "time": "today 3-m"}
-        ]
-        assert ml_req["requestOptions"] == {
-            "property": "", "backend": "IZG", "category": 0
-        }
+        assert ml_req["comparisonItem"] == [{"keyword": "vpn", "geo": "GB", "time": "today 3-m"}]
+        assert ml_req["requestOptions"] == {"property": "", "backend": "IZG", "category": 0}
 
     @respx.mock
     async def test_explore_http_500_returns_explicit_error(self):
@@ -292,9 +290,7 @@ class TestDdgLiteSearch:
 class TestBingRssSearch:
     @respx.mock
     async def test_parses_rss_items_and_strips_html(self):
-        route = respx.get(BING_RSS_URL).mock(
-            return_value=httpx.Response(200, text=BING_RSS_XML)
-        )
+        route = respx.get(BING_RSS_URL).mock(return_value=httpx.Response(200, text=BING_RSS_XML))
         results = await _bing_rss_search("product analytics", 5)
         # The link-less item is dropped.
         assert len(results) == 2
@@ -313,9 +309,7 @@ class TestBingRssSearch:
 
     @respx.mock
     async def test_malformed_xml_returns_empty_not_raise(self):
-        respx.get(BING_RSS_URL).mock(
-            return_value=httpx.Response(200, text="<rss><channel><item>")
-        )
+        respx.get(BING_RSS_URL).mock(return_value=httpx.Response(200, text="<rss><channel><item>"))
         assert await _bing_rss_search("q", 3) == []
 
     @respx.mock
@@ -333,9 +327,7 @@ class TestWebSearchFallbackChain:
         lite = respx.get(url__regex=DDG_LITE_REGEX).mock(
             return_value=httpx.Response(200, text=DDG_LITE_MARKDOWN)
         )
-        payload = json.loads(
-            await web_search("product analytics", max_results=5, headers=HEADERS)
-        )
+        payload = json.loads(await web_search("product analytics", max_results=5, headers=HEADERS))
         assert payload["provider"] == "ddg_lite"
         assert payload["query"] == "product analytics"
         assert len(payload["results"]) == 3
@@ -352,12 +344,8 @@ class TestWebSearchFallbackChain:
         respx.get(url__regex=DDG_LITE_REGEX).mock(
             return_value=httpx.Response(451, text="blocked by reader")
         )
-        respx.get(BING_RSS_URL).mock(
-            return_value=httpx.Response(200, text=BING_RSS_XML)
-        )
-        payload = json.loads(
-            await web_search("product analytics", max_results=5, headers=HEADERS)
-        )
+        respx.get(BING_RSS_URL).mock(return_value=httpx.Response(200, text=BING_RSS_XML))
+        payload = json.loads(await web_search("product analytics", max_results=5, headers=HEADERS))
         assert payload["provider"] == "bing_rss"
         assert payload["results"][0]["title"] == "Product Analytics Tools Compared"
 
@@ -381,9 +369,7 @@ class TestWebSearchFallbackChain:
         lite = respx.get(url__regex=DDG_LITE_REGEX).mock(
             return_value=httpx.Response(200, text=DDG_LITE_MARKDOWN)
         )
-        bing = respx.get(BING_RSS_URL).mock(
-            return_value=httpx.Response(200, text=BING_RSS_XML)
-        )
+        bing = respx.get(BING_RSS_URL).mock(return_value=httpx.Response(200, text=BING_RSS_XML))
         respx.get(url__regex=DDG_SEARCH_REGEX).mock(
             return_value=httpx.Response(200, text=DDG_RESULTS_HTML)
         )

@@ -11,6 +11,7 @@ Test tiers
   ``@pytest.mark.live``; skips automatically when credentials/endpoint are
   missing.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -126,6 +127,7 @@ async def _test_env(monkeypatch, request):
         or request.node.get_closest_marker("integration") is not None
     )
     if not is_integration:
+
         def _no_database():
             raise RuntimeError("database access is disabled in unit tests")
 
@@ -248,9 +250,7 @@ async def db_env(pg_server, monkeypatch):
     import adforge.storage.session as session_module
     from adforge.config import get_settings
 
-    async_uri = pg_server.get_uri().replace(
-        "postgresql://", "postgresql+asyncpg://", 1
-    )
+    async_uri = pg_server.get_uri().replace("postgresql://", "postgresql+asyncpg://", 1)
     monkeypatch.setenv("DATABASE_URL", async_uri)
     monkeypatch.setenv("CHECKPOINTER_BACKEND", "postgres")
     get_settings.cache_clear()
@@ -285,9 +285,7 @@ async def api_client(db_env):
     from adforge.api.main import app
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://adforge.test"
-    ) as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://adforge.test") as client:
         yield client
 
 

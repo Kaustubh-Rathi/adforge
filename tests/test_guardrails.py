@@ -1,9 +1,11 @@
 """Tests for the guardrails layer — contracts, isolation, policy, rate limiter."""
+
 from __future__ import annotations
 
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from adforge.guardrails.contracts import (
     AgentInput,
@@ -24,12 +26,12 @@ class TestContracts:
 
     def test_campaign_brief_rejects_zero_budget(self, sample_brief_dict):
         sample_brief_dict["budget_usd"] = 0
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             CampaignBrief(**sample_brief_dict)
 
     def test_campaign_brief_rejects_unknown_objective(self, sample_brief_dict):
         sample_brief_dict["business_objective"] = " domination"  # not in literal
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             CampaignBrief(**sample_brief_dict)
 
     def test_media_plan_validates_channel_allocations(self):
@@ -45,7 +47,7 @@ class TestContracts:
         assert plan.total_budget_usd == 1000.0
 
     def test_media_plan_rejects_missing_channel(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MediaPlan(
                 channel_allocations=[{"budget_usd": 1000.0}],  # no 'channel'
                 total_budget_usd=1000.0,
@@ -57,15 +59,24 @@ class TestContracts:
             )
 
     def test_kpi_snapshot_validates_ctr_range(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             KpiSnapshot(
-                channel="google", impressions=1000, clicks=2000, spend_usd=10,
-                conversions=5, revenue_usd=50, ctr=2.0, cvr=0.1,
-                cpc=0.05, cpa=2, cpm=10, roas=5,
+                channel="google",
+                impressions=1000,
+                clicks=2000,
+                spend_usd=10,
+                conversions=5,
+                revenue_usd=50,
+                ctr=2.0,
+                cvr=0.1,
+                cpc=0.05,
+                cpa=2,
+                cpm=10,
+                roas=5,
             )
 
     def test_agent_input_requires_tenant(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             AgentInput(
                 tenant_id="",  # empty
                 campaign_id=uuid4(),
@@ -130,5 +141,6 @@ class TestPolicyEnforcer:
 
     def test_assert_approved_raises_when_blocked(self):
         from adforge.guardrails.exceptions import PolicyViolation
+
         with pytest.raises(PolicyViolation):
             self.enforcer.assert_approved("Buy our cigarettes online!")

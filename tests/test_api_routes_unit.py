@@ -149,9 +149,7 @@ class TestKpiRoutes:
     async def test_list_kpis_query_selects_the_mock_flag(self):
         """Provenance has to reach the API, or the demo cannot prove it is mock."""
         db = _FakeDb(_Result([self._row()]))
-        await kpis.list_kpis(
-            uuid4(), days_back=7, channel=None, tenant_id="acme", db=db
-        )
+        await kpis.list_kpis(uuid4(), days_back=7, channel=None, tenant_id="acme", db=db)
         statement, _ = db.calls[0]
         assert "is_mock" in statement
 

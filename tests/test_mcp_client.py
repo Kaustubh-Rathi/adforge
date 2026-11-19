@@ -6,6 +6,7 @@ with a recording fake. Settings are reset around each test through the shared
 autouse fixture in ``conftest.py``; tests that override env clear the settings
 cache themselves.
 """
+
 from __future__ import annotations
 
 import logging
@@ -86,9 +87,7 @@ def fake_mcp(monkeypatch):
     import langchain_mcp_adapters.client as lc_client
 
     FakeMultiServerMCPClient.instances.clear()
-    monkeypatch.setattr(
-        lc_client, "MultiServerMCPClient", FakeMultiServerMCPClient, raising=False
-    )
+    monkeypatch.setattr(lc_client, "MultiServerMCPClient", FakeMultiServerMCPClient, raising=False)
     mcp_client.reset_mcp_client()
     yield FakeMultiServerMCPClient
     mcp_client.reset_mcp_client()
@@ -146,16 +145,12 @@ class TestBuildClient:
         assert set(servers) == set(LOCAL_SERVERS) | {"meta", "tiktok", "snap", "reddit"}
         for name in ("meta", "tiktok", "snap", "reddit"):
             assert servers[name]["transport"] == "sse"
-            assert servers[name]["headers"] == {
-                "Authorization": "Bearer pb-secret-token"
-            }
+            assert servers[name]["headers"] == {"Authorization": "Bearer pb-secret-token"}
             assert servers[name]["url"].startswith("https://")
             assert servers[name]["url"].endswith("/sse")
         assert servers["meta"]["url"] == "https://meta-ads.mcp.pipeboard.co/sse"
 
-    def test_google_credentials_add_official_streamable_http_server(
-        self, monkeypatch, fake_mcp
-    ):
+    def test_google_credentials_add_official_streamable_http_server(self, monkeypatch, fake_mcp):
         _prepare_env(
             monkeypatch,
             GOOGLE_APPLICATION_CREDENTIALS="C:/secrets/google-creds.json",
@@ -172,9 +167,7 @@ class TestBuildClient:
 
 
 class TestGetMcpTools:
-    async def test_disabled_returns_empty_without_building_client(
-        self, monkeypatch, fake_mcp
-    ):
+    async def test_disabled_returns_empty_without_building_client(self, monkeypatch, fake_mcp):
         _prepare_env(monkeypatch, MCP_ENABLED="false")
 
         assert await mcp_client.get_mcp_tools("research") == []

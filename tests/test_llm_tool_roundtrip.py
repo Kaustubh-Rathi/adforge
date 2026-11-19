@@ -59,9 +59,7 @@ class _FakeOpenAIServer(BaseHTTPRequestHandler):
         type(self).requests.append(payload)
 
         messages = payload.get("messages", [])
-        tool_result = next(
-            (m for m in reversed(messages) if m.get("role") == "tool"), None
-        )
+        tool_result = next((m for m in reversed(messages) if m.get("role") == "tool"), None)
         if tool_result is None:
             events = [
                 {
@@ -87,11 +85,7 @@ class _FakeOpenAIServer(BaseHTTPRequestHandler):
                         }
                     ]
                 },
-                {
-                    "choices": [
-                        {"delta": {}, "finish_reason": "tool_calls"}
-                    ]
-                },
+                {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
                 {
                     "choices": [],
                     "usage": {
@@ -107,9 +101,7 @@ class _FakeOpenAIServer(BaseHTTPRequestHandler):
                     "choices": [
                         {
                             "delta": {
-                                "content": json.dumps(
-                                    {"ok": True, "roas": 4.0, "used_tool": True}
-                                )
+                                "content": json.dumps({"ok": True, "roas": 4.0, "used_tool": True})
                             }
                         }
                     ]
@@ -124,9 +116,7 @@ class _FakeOpenAIServer(BaseHTTPRequestHandler):
                 },
             ]
 
-        body = b"".join(
-            b"data: " + json.dumps(event).encode() + b"\n\n" for event in events
-        )
+        body = b"".join(b"data: " + json.dumps(event).encode() + b"\n\n" for event in events)
         body += b"data: [DONE]\n\n"
 
         self.send_response(200)
@@ -171,9 +161,7 @@ def fake_openai_server():
         thread.join(timeout=5)
 
 
-async def test_real_transport_executes_read_only_tool_then_answers(
-    fake_openai_server, monkeypatch
-):
+async def test_real_transport_executes_read_only_tool_then_answers(fake_openai_server, monkeypatch):
     tool = _FakeTool()
 
     async def fake_get_mcp_tools(server: str, *, read_only: bool = True):
@@ -191,13 +179,15 @@ async def test_real_transport_executes_read_only_tool_then_answers(
     )
     agent = _RoundTripAgent(llm=provider)
 
-    result = await agent.run({
-        "request_id": str(uuid4()),
-        "tenant_id": "tenant_a",
-        "campaign_id": str(uuid4()),
-        "agent_name": "roundtrip",
-        "upstream_payloads": {},
-    })
+    result = await agent.run(
+        {
+            "request_id": str(uuid4()),
+            "tenant_id": "tenant_a",
+            "campaign_id": str(uuid4()),
+            "agent_name": "roundtrip",
+            "upstream_payloads": {},
+        }
+    )
 
     assert result.ok is True, result.output.error
     assert result.output.payload == {"ok": True, "roas": 4.0, "used_tool": True}
@@ -212,9 +202,7 @@ async def test_real_transport_executes_read_only_tool_then_answers(
     # Two real HTTP round trips: tool call, then final answer.
     assert len(_FakeOpenAIServer.requests) == 2
     first, second = _FakeOpenAIServer.requests
-    advertised = {
-        tool["function"]["name"] for tool in first.get("tools", [])
-    }
+    advertised = {tool["function"]["name"] for tool in first.get("tools", [])}
     assert advertised == {"compute_roas"}
 
     tool_messages = [m for m in second["messages"] if m.get("role") == "tool"]

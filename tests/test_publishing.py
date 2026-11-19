@@ -4,6 +4,7 @@ Every test exercises ``publish_approved_campaign`` directly. The token verifier
 and the adapter webhook call are replaced with recording fakes so the money
 envelope is validated without any network access or real spend.
 """
+
 from __future__ import annotations
 
 import math
@@ -103,17 +104,13 @@ class TestWriteGuards:
 
         assert adapter == []
 
-    async def test_invalid_token_is_refused_before_any_spend(
-        self, monkeypatch, adapter
-    ):
+    async def test_invalid_token_is_refused_before_any_spend(self, monkeypatch, adapter):
         _enable_writes(monkeypatch)
 
         async def reject(*args, **kwargs):
             return None
 
-        monkeypatch.setattr(
-            publishing, "verify_and_consume_approval", reject
-        )
+        monkeypatch.setattr(publishing, "verify_and_consume_approval", reject)
 
         with pytest.raises(publishing.PublishError, match="approval token"):
             await _publish()
@@ -123,9 +120,7 @@ class TestWriteGuards:
 
 class TestMoneyEnvelope:
     @pytest.mark.parametrize("total", [None, "abc", 0, -1.0, math.inf, math.nan])
-    async def test_invalid_plan_total_is_refused(
-        self, monkeypatch, adapter, valid_token, total
-    ):
+    async def test_invalid_plan_total_is_refused(self, monkeypatch, adapter, valid_token, total):
         _enable_writes(monkeypatch)
 
         with pytest.raises(publishing.PublishError, match="total_budget_usd"):
@@ -148,9 +143,7 @@ class TestMoneyEnvelope:
     ):
         _enable_writes(monkeypatch)
 
-        with pytest.raises(
-            publishing.PublishError, match="approved campaign budget"
-        ):
+        with pytest.raises(publishing.PublishError, match="approved campaign budget"):
             await _publish(brief={"budget_usd": 100.0})
 
         assert adapter == []
@@ -166,9 +159,7 @@ class TestMoneyEnvelope:
         assert len(results) == 2
         assert len(adapter) == 2
 
-    async def test_allocations_over_plan_total_are_refused(
-        self, monkeypatch, adapter, valid_token
-    ):
+    async def test_allocations_over_plan_total_are_refused(self, monkeypatch, adapter, valid_token):
         _enable_writes(monkeypatch)
         plan = _plan(
             channel_allocations=[
@@ -177,16 +168,12 @@ class TestMoneyEnvelope:
             ]
         )
 
-        with pytest.raises(
-            publishing.PublishError, match="exceeds the media plan budget"
-        ):
+        with pytest.raises(publishing.PublishError, match="exceeds the media plan budget"):
             await _publish(media_plan=plan)
 
         assert adapter == []
 
-    @pytest.mark.parametrize(
-        "bad_budget", [None, "abc", 0, -5.0, math.inf, math.nan]
-    )
+    @pytest.mark.parametrize("bad_budget", [None, "abc", 0, -5.0, math.inf, math.nan])
     async def test_invalid_channel_budget_is_refused(
         self, monkeypatch, adapter, valid_token, bad_budget
     ):
@@ -203,9 +190,7 @@ class TestMoneyEnvelope:
 
         assert adapter == []
 
-    async def test_no_allocations_is_refused(
-        self, monkeypatch, adapter, valid_token
-    ):
+    async def test_no_allocations_is_refused(self, monkeypatch, adapter, valid_token):
         _enable_writes(monkeypatch)
 
         with pytest.raises(publishing.PublishError, match="no channel allocations"):
@@ -213,13 +198,9 @@ class TestMoneyEnvelope:
 
         assert adapter == []
 
-    async def test_blank_channel_is_refused(
-        self, monkeypatch, adapter, valid_token
-    ):
+    async def test_blank_channel_is_refused(self, monkeypatch, adapter, valid_token):
         _enable_writes(monkeypatch)
-        plan = _plan(
-            channel_allocations=[{"channel": "   ", "budget_usd": 100.0}]
-        )
+        plan = _plan(channel_allocations=[{"channel": "   ", "budget_usd": 100.0}])
 
         with pytest.raises(publishing.PublishError, match="must name a channel"):
             await _publish(media_plan=plan)
@@ -243,9 +224,7 @@ class TestMoneyEnvelope:
 
         assert adapter == []
 
-    async def test_allocations_may_be_under_plan_total(
-        self, monkeypatch, adapter, valid_token
-    ):
+    async def test_allocations_may_be_under_plan_total(self, monkeypatch, adapter, valid_token):
         _enable_writes(monkeypatch)
         plan = _plan(
             channel_allocations=[{"channel": "google", "budget_usd": 250.0}],
@@ -288,13 +267,9 @@ class TestPublishExecution:
             {"external_campaign_id": "linkedin-1"},
         ]
         assert [call["channel"] for call in adapter] == ["google", "linkedin"]
-        assert all(
-            call["audience"] == {"industries": ["SaaS"]} for call in adapter
-        )
+        assert all(call["audience"] == {"industries": ["SaaS"]} for call in adapter)
 
-    async def test_adapter_failure_reports_partial_progress(
-        self, monkeypatch, valid_token
-    ):
+    async def test_adapter_failure_reports_partial_progress(self, monkeypatch, valid_token):
         _enable_writes(monkeypatch)
         calls: list[str] = []
 
@@ -306,9 +281,7 @@ class TestPublishExecution:
 
         monkeypatch.setattr(writes, "publish_campaign", fail_second)
 
-        with pytest.raises(
-            publishing.PublishError, match="after 1 successful publish"
-        ):
+        with pytest.raises(publishing.PublishError, match="after 1 successful publish"):
             await _publish()
 
         assert calls == ["google", "linkedin"]

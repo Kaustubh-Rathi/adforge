@@ -1,13 +1,17 @@
 """Graph state + node wiring."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
 from operator import add
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, TypedDict, cast
 from uuid import UUID, uuid4
 
+from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
 from adforge.agents.compliance.agent import ComplianceAgent
@@ -58,6 +62,16 @@ def thread_id_for(campaign_id: str | UUID) -> str:
     return f"campaign:{campaign_id}"
 
 
+def graph_config(campaign_id: str | UUID) -> RunnableConfig:
+    """LangGraph invocation config for a campaign's checkpoint thread.
+
+    Typed so ``ainvoke``/``aget_state`` calls do not degrade to ``Any``; the
+    run endpoint, the HITL resume endpoint and the eval runner must all pass
+    the identical thread id.
+    """
+    return {"configurable": {"thread_id": thread_id_for(campaign_id)}}
+
+
 # Singleton agent instances (cheap to construct; reuse across runs)
 _research = ResearchAgent()
 _creative = CreativeStrategistAgent()
@@ -92,7 +106,7 @@ async def research_node(state: CampaignState) -> dict[str, Any]:
 
 
 async def creative_node(state: CampaignState) -> dict[str, Any]:
-    upstream = {"research": state.get("research", {})}
+    upstream: dict[str, Any] = {"research": state.get("research", {})}
     # Pass the reviewer's rejection comments into the revision round.
     if state.get("reviewer_comments"):
         upstream["reviewer_comments"] = state["reviewer_comments"]
@@ -105,28 +119,32 @@ async def creative_node(state: CampaignState) -> dict[str, Any]:
 
 
 async def media_planner_node(state: CampaignState) -> dict[str, Any]:
-    result = await _media_planner.run(_agent_input(
-        state,
-        "media_planner",
-        {
-            "research": state.get("research", {}),
-            "creative": state.get("creative", {}),
-        },
-    ))
+    result = await _media_planner.run(
+        _agent_input(
+            state,
+            "media_planner",
+            {
+                "research": state.get("research", {}),
+                "creative": state.get("creative", {}),
+            },
+        )
+    )
     if result.output.error is None:
         return {"media_plan": result.output.payload}
     return {"media_plan": {}, "errors": [f"media_planner: {result.output.error}"]}
 
 
 async def compliance_node(state: CampaignState) -> dict[str, Any]:
-    result = await _compliance.run(_agent_input(
-        state,
-        "compliance",
-        {
-            "creative": state.get("creative", {}),
-            "media_plan": state.get("media_plan", {}),
-        },
-    ))
+    result = await _compliance.run(
+        _agent_input(
+            state,
+            "compliance",
+            {
+                "creative": state.get("creative", {}),
+                "media_plan": state.get("media_plan", {}),
+            },
+        )
+    )
     if result.output.error is None:
         return {"compliance_verdict": result.output.payload}
     # A failed compliance review must never be treated as approval.
@@ -213,40 +231,46 @@ async def human_review_node(state: CampaignState) -> dict[str, Any]:
 
 
 async def kpi_analytics_node(state: CampaignState) -> dict[str, Any]:
-    result = await _kpi.run(_agent_input(
-        state,
-        "kpi_analytics",
-        {"media_plan": state.get("media_plan", {})},
-    ))
+    result = await _kpi.run(
+        _agent_input(
+            state,
+            "kpi_analytics",
+            {"media_plan": state.get("media_plan", {})},
+        )
+    )
     if result.output.error is None:
         return {"kpi_analytics": result.output.payload}
     return {"kpi_analytics": {}, "errors": [f"kpi_analytics: {result.output.error}"]}
 
 
 async def roi_calculator_node(state: CampaignState) -> dict[str, Any]:
-    result = await _roi.run(_agent_input(
-        state,
-        "roi_calculator",
-        {
-            "kpi_analytics": state.get("kpi_analytics", {}),
-            "media_plan": state.get("media_plan", {}),
-        },
-    ))
+    result = await _roi.run(
+        _agent_input(
+            state,
+            "roi_calculator",
+            {
+                "kpi_analytics": state.get("kpi_analytics", {}),
+                "media_plan": state.get("media_plan", {}),
+            },
+        )
+    )
     if result.output.error is None:
         return {"roi_calculator": result.output.payload}
     return {"roi_calculator": {}, "errors": [f"roi_calculator: {result.output.error}"]}
 
 
 async def optimization_node(state: CampaignState) -> dict[str, Any]:
-    result = await _optimization.run(_agent_input(
-        state,
-        "optimization",
-        {
-            "kpi_analytics": state.get("kpi_analytics", {}),
-            "roi_calculator": state.get("roi_calculator", {}),
-            "media_plan": state.get("media_plan", {}),
-        },
-    ))
+    result = await _optimization.run(
+        _agent_input(
+            state,
+            "optimization",
+            {
+                "kpi_analytics": state.get("kpi_analytics", {}),
+                "roi_calculator": state.get("roi_calculator", {}),
+                "media_plan": state.get("media_plan", {}),
+            },
+        )
+    )
     if result.output.error is None:
         return {"optimization": result.output.payload}
     return {"optimization": {}, "errors": [f"optimization: {result.output.error}"]}
@@ -265,11 +289,11 @@ def route_after_compliance(state: CampaignState) -> str:
 def route_after_review(state: CampaignState) -> str:
     """After the HITL review interrupt resumes:
 
-       - approved     → kpi_analytics
-       - rejected     → creative_strategist (revise, if revision_count < 3)
-       - rejected (max revisions hit) → END (campaign blocked)
-       - skipped      → kpi_analytics (dev mode)
-       - auto_blocked → END (compliance critical risk)
+    - approved     → kpi_analytics
+    - rejected     → creative_strategist (revise, if revision_count < 3)
+    - rejected (max revisions hit) → END (campaign blocked)
+    - skipped      → kpi_analytics (dev mode)
+    - auto_blocked → END (compliance critical risk)
     """
     status = state.get("review_status", "pending")
     if status in ("approved", "skipped"):
@@ -294,7 +318,7 @@ def route_after_creative_revision(state: CampaignState) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def build_graph():
+def build_graph() -> StateGraph[CampaignState]:
     """Construct the LangGraph StateGraph (not yet compiled)."""
     builder = StateGraph(CampaignState)
     builder.add_node("research", research_node)
@@ -330,7 +354,7 @@ def build_graph():
     return builder
 
 
-_compiled_graph = None
+_compiled_graph: CompiledStateGraph[Any, Any, Any, Any] | None = None
 _graph_lock: asyncio.Lock | None = None
 
 
@@ -360,7 +384,7 @@ def _checkpointer_conninfo(database_url: str) -> str:
     return url.render_as_string(hide_password=False)
 
 
-async def _build_checkpointer():
+async def _build_checkpointer() -> BaseCheckpointSaver[Any] | None:
     """Construct the configured checkpointer.
 
     Postgres gives durable HITL resumes across API workers/restarts. In
@@ -406,7 +430,11 @@ async def _build_checkpointer():
         # the pool was constructed with ``open=False`` and never opened.
         await pool.open(wait=True, timeout=10)
         try:
-            checkpointer = AsyncPostgresSaver(pool)
+            # psycopg's pool is generic over its row factory (a tuple by
+            # default) while ``AsyncPostgresSaver`` is written against dict
+            # rows. The runtime object is the same pool; only the static
+            # parameter differs, so narrow it here instead of at the builder.
+            checkpointer = AsyncPostgresSaver(cast("Any", pool))
             await checkpointer.setup()
         except Exception:
             await pool.close()
@@ -428,7 +456,7 @@ async def _build_checkpointer():
         return MemorySaver()
 
 
-async def get_compiled_graph():
+async def get_compiled_graph() -> CompiledStateGraph[Any, Any, Any, Any]:
     """Return a compiled + checkpointer-wired graph (async singleton)."""
     global _compiled_graph
     if _compiled_graph is not None:

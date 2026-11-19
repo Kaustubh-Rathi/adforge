@@ -19,6 +19,18 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+#: Ad channel identifier shared by briefs, plans and KPI rows.
+Channel = Literal["google", "meta", "linkedin", "tiktok"]
+
+#: Compliance risk classification. Drives the publish gate in PolicyEnforcer.
+RiskLevel = Literal["low", "medium", "high", "critical"]
+
+
+def default_channels() -> list[Channel]:
+    """Default channel mix for a brief that does not specify one."""
+    return ["google", "meta"]
+
+
 # --------------------------------------------------------------------------- #
 # Domain payloads (one per agent domain)
 # --------------------------------------------------------------------------- #
@@ -34,12 +46,10 @@ class CampaignBrief(BaseModel):
     target_audience: str = Field(..., min_length=5, max_length=500)
     budget_usd: float = Field(..., gt=0, le=10_000_000)
     duration_days: int = Field(..., ge=1, le=365)
-    business_objective: Literal[
-        "awareness", "consideration", "conversion", "retention"
-    ] = "conversion"
-    channels_hint: list[Literal["google", "meta", "linkedin", "tiktok"]] = Field(
-        default_factory=lambda: ["google", "meta"]
+    business_objective: Literal["awareness", "consideration", "conversion", "retention"] = (
+        "conversion"
     )
+    channels_hint: list[Channel] = Field(default_factory=default_channels)
     constraints: list[str] = Field(default_factory=list)
 
     @field_validator("channels_hint")
@@ -141,8 +151,7 @@ class MediaPlan(BaseModel):
         cap = get_settings().guardrails_max_campaign_budget_usd
         if total > cap:
             raise ValueError(
-                f"total_budget_usd ${total:,.2f} exceeds the configured "
-                f"campaign cap of ${cap:,.2f}"
+                f"total_budget_usd ${total:,.2f} exceeds the configured campaign cap of ${cap:,.2f}"
             )
         allocated = sum(float(a["budget_usd"]) for a in self.channel_allocations)
         if allocated > total + 0.01:
@@ -158,7 +167,7 @@ class KpiSnapshot(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    channel: Literal["google", "meta", "linkedin", "tiktok"]
+    channel: Channel
     campaign_external_id: str | None = None
     impressions: int = Field(..., ge=0)
     clicks: int = Field(..., ge=0)
@@ -214,7 +223,7 @@ class ComplianceVerdict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     approved: bool
-    risk_level: Literal["low", "medium", "high", "critical"]
+    risk_level: RiskLevel
     flagged_issues: list[str] = Field(default_factory=list)
     required_disclosures: list[str] = Field(default_factory=list)
     reviewer_notes: str = ""

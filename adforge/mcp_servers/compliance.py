@@ -8,6 +8,7 @@ Tools:
 The Compliance agent calls evaluate_creative to run the ruleset against the
 creative text. This is the deterministic half of the compliance gate.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,7 +43,8 @@ async def list_blocked_terms(headers: dict[str, str] | None = None) -> str:
     """Return the list of tier-1 (hard-blocked) patterns."""
     blocked = [
         {"rule_id": r.rule_id, "pattern": r.pattern, "description": r.description}
-        for r in _enforcer.rules if r.tier == 1
+        for r in _enforcer.rules
+        if r.tier == 1
     ]
     return json.dumps({"blocked": blocked})
 
@@ -52,8 +54,13 @@ async def list_blocked_terms(headers: dict[str, str] | None = None) -> str:
 async def list_required_disclosures(headers: dict[str, str] | None = None) -> str:
     """Return the list of tier-2 (require disclosure) rules."""
     disclosures = [
-        {"rule_id": r.rule_id, "pattern": r.pattern,
-         "required_disclosure": r.required_disclosure, "description": r.description}
-        for r in _enforcer.rules if r.tier == 2
+        {
+            "rule_id": r.rule_id,
+            "pattern": r.pattern,
+            "required_disclosure": r.required_disclosure,
+            "description": r.description,
+        }
+        for r in _enforcer.rules
+        if r.tier == 2
     ]
     return json.dumps({"disclosures": disclosures})

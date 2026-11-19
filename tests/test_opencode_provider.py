@@ -315,9 +315,7 @@ class TestStreamParsing:
                 ]
             }
         ).encode()
-        response = oc.OpencodeProvider._normalise(
-            _provider()._consume_json(body), "prompt"
-        )
+        response = oc.OpencodeProvider._normalise(_provider()._consume_json(body), "prompt")
         assert response.tool_calls[0].name == "compute_roas"
         assert response.tool_calls[0].arguments == {
             "revenue_usd": 10,
@@ -330,9 +328,7 @@ class TestStreamParsing:
             "content": [],
             "usage": None,
             "finish_reason": "tool_calls",
-            "tool_calls": {
-                0: {"id": "call_3", "name": "web_search", "arguments": "{bad"}
-            },
+            "tool_calls": {0: {"id": "call_3", "name": "web_search", "arguments": "{bad"}},
         }
         response = oc.OpencodeProvider._normalise(state, "prompt")
         assert response.tool_calls[0].arguments == {"_raw_arguments": "{bad"}

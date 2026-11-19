@@ -7,10 +7,16 @@ LangChain's ``create_agent`` expects a model that implements
 This wrapper bridges the two so we can use ``create_agent`` with the
 Z.ai GLM provider (or any other provider we add).
 """
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
+from langchain_core.callbacks import (
+    AsyncCallbackManagerForLLMRun,
+    CallbackManagerForLLMRun,
+)
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -31,17 +37,30 @@ class LangChainLLMWrapper(BaseChatModel):
     def _llm_type(self) -> str:
         return "adforge-llm-wrapper"
 
-    def _generate(self, messages: list[BaseMessage], **kwargs: Any) -> ChatResult:
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
         # Synchronous fallback — ReAct agents are async, so this is rarely called.
         import asyncio
+
         return asyncio.run(self._agenerate_internal(messages, **kwargs))
 
-    async def _agenerate(self, messages: list[BaseMessage], **kwargs: Any) -> ChatResult:
+    async def _agenerate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
         return await self._agenerate_internal(messages, **kwargs)
 
     async def _agenerate_internal(self, messages: list[BaseMessage], **kwargs: Any) -> ChatResult:
         # Convert LangChain messages to our chat format
-        chat_messages = []
+        chat_messages: list[dict[str, Any]] = []
         for m in messages:
             if isinstance(m, SystemMessage):
                 chat_messages.append({"role": "system", "content": m.content})
@@ -70,29 +89,40 @@ class LangChainLLMWrapper(BaseChatModel):
         generation = ChatGeneration(message=ai_message)
         return ChatResult(generations=[generation])
 
-    def bind_tools(self, tools: list, **kwargs: Any) -> LangChainLLMWrapper:
+    def bind_tools(
+        self,
+        tools: Sequence[Any],
+        **kwargs: Any,
+    ) -> LangChainLLMWrapper:
         """Store the tool schemas for the next call.
 
         The actual tool dispatch is handled by LangGraph's ToolNode — the
         LLM just needs to know the schemas so it can emit tool_call dicts.
         """
-        # Convert LangChain Tool objects to OpenAI function schemas
-        tool_schemas = []
+        # Convert LangChain Tool objects to OpenAI function schemas. Duck-typed
+        # on purpose: the langchain[mcp] adapter passes Tool instances, while
+        # tests (and any hand-built schema) pass a light namespace with the
+        # same three attributes.
+        tool_schemas: list[dict[str, Any]] = []
         for t in tools:
-            if hasattr(t, "args_schema"):
-                tool_schemas.append({
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.args_schema.model_json_schema() if t.args_schema else {},
-                    },
-                })
+            args_schema = getattr(t, "args_schema", None)
+            if args_schema is not None and hasattr(args_schema, "model_json_schema"):
+                schema: dict[str, Any] = args_schema.model_json_schema()
+                tool_schemas.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": str(getattr(t, "name", "")),
+                            "description": str(getattr(t, "description", "") or ""),
+                            "parameters": schema,
+                        },
+                    }
+                )
             elif isinstance(t, dict):
                 tool_schemas.append(t)
         # Return a new wrapper with the tools bound
         bound = LangChainLLMWrapper(provider=self.provider)
-        bound._bound_tools = tool_schemas  # type: ignore[attr-defined]
+        bound._bound_tools = tool_schemas
         return bound
 
-    _bound_tools: list = PrivateAttr(default_factory=list)
+    _bound_tools: list[dict[str, Any]] = PrivateAttr(default_factory=list)

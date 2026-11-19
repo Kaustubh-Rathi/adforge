@@ -1,4 +1,5 @@
 """ORM models — Campaign, AgentRun, KpiSnapshot, AuditEvent, CreativeArtifact."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -17,7 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy.dialects.postgresql import UUID as PgUUID  # noqa: N811 — SQLAlchemy idiom
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from adforge.storage.base import Base, TenantMixin, TimestampMixin
@@ -85,7 +86,10 @@ class KpiSnapshotRow(Base, TenantMixin, TimestampMixin):
     __tablename__ = "kpi_snapshots"
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id", "campaign_id", "channel", "platform_date",
+            "tenant_id",
+            "campaign_id",
+            "channel",
+            "platform_date",
             name="uq_kpi_daily",
         ),
     )
@@ -146,9 +150,7 @@ class AuditEventRow(Base, TenantMixin):
 
     __tablename__ = "audit_events"
 
-    event_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    event_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     campaign_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), nullable=True, index=True
