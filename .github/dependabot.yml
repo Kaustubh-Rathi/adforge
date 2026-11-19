@@ -1,0 +1,28 @@
+version: 2
+
+updates:
+  # Python dependencies. Grouped so a weekly PR is reviewable rather than a
+  # dozen single-package bumps.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        patterns: ["pytest*", "ruff", "mypy", "respx", "fakeredis", "embedded-postgres"]
+      langchain:
+        patterns: ["langchain*", "langgraph*"]
+      runtime:
+        patterns: ["*"]
+    ignore:
+      # The ruff formatter's output changes between releases; bump it
+      # deliberately and re-run `ruff format` in the same commit.
+      - dependency-name: ruff
+        update-types: ["version-update:semver-minor"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
