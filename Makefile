@@ -1,7 +1,8 @@
 .PHONY: help install dev lint test test-unit test-integration test-live run-api run-dashboard run-mcp seed db-up db-down db-reset docker-up docker-down docker-logs
 
 # Integration tier scopes coverage to the modules exercised end-to-end with the
-# embedded Postgres server. External ad-platform MCPs are covered by the unit tier.
+# embedded Postgres server. It reports coverage but does not gate on it; the
+# unit tier owns the 90% gate, matching CI.
 COV_INTEGRATION = --cov=adforge.api --cov=adforge.graph --cov=adforge.storage --cov=adforge.mcp_servers.analytics --cov=adforge.guardrails.data_isolation
 
 help:
@@ -11,7 +12,7 @@ help:
 	@echo "  make lint             Run ruff + mypy"
 	@echo "  make test             Run full test suite (with coverage)"
 	@echo "  make test-unit        Unit tests, >90% coverage gate (no services needed)"
-	@echo "  make test-integration Integration tests against embedded Postgres, >90% coverage gate"
+	@echo "  make test-integration Integration tests against embedded Postgres (coverage reported)"
 	@echo "  make test-live        Opt-in live tests (ADFORGE_LIVE_TESTS=1)"
 	@echo "  make db-up            Start Postgres + Redis via docker-compose"
 	@echo "  make db-reset         Drop + recreate dev database"
@@ -23,7 +24,7 @@ help:
 	@echo "  make docker-down      Tear the whole stack down"
 
 install:
-	pip install -e ".[dev]"
+	pip install -e ".[dev,dashboard]"
 
 dev: install db-up seed
 	@echo "Dev environment ready. Run 'make run-api' and 'make run-dashboard' in two terminals."
@@ -40,7 +41,7 @@ test-unit:
 	pytest -m "not integration and not live" --cov=adforge --cov-report=term-missing --cov-fail-under=90
 
 test-integration:
-	pytest -m "integration and not live" $(COV_INTEGRATION) --cov-report=term-missing --cov-fail-under=90
+	pytest -m "integration and not live" $(COV_INTEGRATION) --cov-report=term-missing
 
 test-live:
 	ADFORGE_LIVE_TESTS=1 pytest -m "live" --timeout=900

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -34,6 +35,7 @@ NARRATION = HERE / "narration.json"
 VOICE = "en-US-AndrewNeural"
 RATE = "-4%"
 MAX_CHARS = 46
+DEFAULT_FFMPEG = os.environ.get("AF_FFMPEG") or shutil.which("ffmpeg")
 MIN_CUE = 1.1
 
 _CUE_RE = re.compile(
@@ -175,19 +177,22 @@ def main() -> None:
     parser.add_argument("--only", default="", help="comma-separated scene ids")
     parser.add_argument(
         "--ffmpeg",
-        default=shutil.which("ffmpeg")
-        or (
-            r"C:\Users\Kaustuvh\AppData\Local\Microsoft\WinGet\Packages"
-            r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
-            r"\ffmpeg-9.0.1-full_build\bin\ffmpeg.exe"
-        ),
+        default=DEFAULT_FFMPEG,
+        help="ffmpeg binary (default: AF_FFMPEG or PATH)",
     )
     args = parser.parse_args()
 
+    if not args.ffmpeg:
+        raise SystemExit("ffmpeg not found; install it, set AF_FFMPEG, or pass --ffmpeg")
     ffmpeg = Path(args.ffmpeg)
-    edge = Path(sys.executable).with_name("edge-tts.exe")
-    if not edge.exists():
-        raise SystemExit(f"edge-tts not found next to {sys.executable}")
+    if not ffmpeg.exists():
+        raise SystemExit(f"ffmpeg not found: {ffmpeg}")
+    edge = shutil.which("edge-tts")
+    if edge is None:
+        sibling = Path(sys.executable).with_name("edge-tts.exe" if os.name == "nt" else "edge-tts")
+        edge = str(sibling) if sibling.exists() else None
+    if edge is None:
+        raise SystemExit("edge-tts not found; pip install edge-tts in this environment")
 
     AUDIO.mkdir(parents=True, exist_ok=True)
     SUBS.mkdir(parents=True, exist_ok=True)

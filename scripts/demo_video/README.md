@@ -11,7 +11,7 @@ rendered files under `out/` are gitignored; only the sources are tracked.
 
 | File | Job |
 |---|---|
-| `cards.html` + `cards.js` | Render the six full-frame cards (title, setup, guardrails, close) at 1600×900 |
+| `cards.html` + `cards.js` | Render the six full-frame cards (title, setup, setup-run, guardrails, honest, close) at 1600×900 |
 | `capture.js` | Playwright: real recordings of create / run / approve / results, plus the still frames |
 | `narration.json` | The 12-scene script: id, kind, lead-in, badge, narration text |
 | `tts.py` | edge-tts narration → `out/audio/*.mp3` + per-scene `out/subs/*.srt` + `out/audio_manifest.json` |
@@ -22,8 +22,9 @@ rendered files under `out/` are gitignored; only the sources are tracked.
 
 - Node 20+ and Playwright with Chromium. `capture.js` uses `AF_CHROME` for the
   browser binary and defaults to a local Playwright install.
-- ffmpeg with libass, libx264 and drawtext. `build.py --ffmpeg <path>` overrides
-  the default Windows winget path.
+- ffmpeg with libass, libx264 and drawtext, on `PATH` or set `AF_FFMPEG` /
+  pass `--ffmpeg`. The badge font defaults to Segoe UI on Windows and DejaVu
+  Sans on Linux; set `AF_FONT` if neither is installed.
 - `edge-tts` installed in the same virtualenv as the app (`pip install
   edge-tts`), and the API (`:8000`) and dashboard (`:8501`) running.
 - The dashboard uses tenant `demo_tenant`; the approve scene expects

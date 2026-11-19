@@ -186,7 +186,7 @@ failure.
 ## 6. Run the whole stack in Docker
 
 Use this when you want one command instead of three terminals. It builds the
-API, the dashboard and all seven MCP servers as separate containers.
+API, the dashboard and all eight MCP servers as separate containers.
 
 ```powershell
 docker compose up -d --build

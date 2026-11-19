@@ -68,16 +68,17 @@ flowchart TB
     API --- MCP["MCP tool servers<br/>research · ads · analytics · ROI · compliance<br/>public data · LinkedIn · Google Ads"]
 ```
 
-Full system design with 13 diagrams: **[docs/DESIGN.md](docs/DESIGN.md)**.
+Full system design with 17 diagrams: **[docs/DESIGN.md](docs/DESIGN.md)**.
 Dependency audit (what we integrate vs. build): **[docs/RESEARCH.md](docs/RESEARCH.md)**.
 
 ---
 
 ## Quick start
 
-`make` is not required. On Windows use the PowerShell blocks below; on Linux/macOS
-either path works. Every command in **[docs/RUNNING.md](docs/RUNNING.md)** was
-executed on a real machine before being written down.
+`make` is not required. On Windows use the PowerShell blocks below; the
+`Makefile` wraps the same steps for Linux/macOS and CI. Every command in
+**[docs/RUNNING.md](docs/RUNNING.md)** was executed on a real Windows machine
+before being written down.
 
 **Prerequisites:** Python 3.11+, Docker Desktop.
 
@@ -154,7 +155,8 @@ Invoke-RestMethod -Method Post "http://127.0.0.1:8000/campaigns/$($c.id)/run" `
 
 Every request needs `X-AdForge-Tenant`. There is no ambient tenant.
 
-Full endpoint list and a PowerShell end-to-end: **[docs/RUNNING.md](docs/RUNNING.md)**.
+PowerShell end-to-end and the core endpoints: **[docs/RUNNING.md](docs/RUNNING.md)**.
+The running API's Swagger UI at <http://localhost:8000/docs> is the full reference.
 
 ---
 
@@ -204,12 +206,12 @@ These are enforced by default; disabling them is refused outside dev/test.
 
 | Tier | Services | Count |
 |---|---|---|
-| Unit | fakeredis + scripted LLM double; no DB, no network | 647 |
+| Unit | fakeredis + scripted LLM double; no DB, no network | 644 |
 | Integration | `embedded-postgres`, no Docker needed | 44 |
 | Live | opt-in via `ADFORGE_LIVE_TESTS=1`; real LLM + ad APIs | opt-in |
 
-CI runs lint and the unit tier (with a 90% coverage gate) on Python 3.11 and
-3.12, and the integration tier on 3.11
+CI runs lint on Python 3.11, the unit tier (with a 90% coverage gate) on 3.11
+and 3.12, and the integration tier on 3.11
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ### Add a new agent

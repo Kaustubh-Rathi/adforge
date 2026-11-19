@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -40,10 +41,14 @@ BUILD = OUT / "build"
 
 WIDTH, HEIGHT, FPS = 1600, 900, 30
 
-DEFAULT_FFMPEG = shutil.which("ffmpeg") or (
-    r"C:\Users\Kaustuvh\AppData\Local\Microsoft\WinGet\Packages"
-    r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
-    r"\ffmpeg-9.0.1-full_build\bin\ffmpeg.exe"
+DEFAULT_FFMPEG = os.environ.get("AF_FFMPEG") or shutil.which("ffmpeg")
+FONT = Path(
+    os.environ.get("AF_FONT")
+    or (
+        "C:/Windows/Fonts/segoeui.ttf"
+        if os.name == "nt"
+        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    )
 )
 
 #: libass style. PlayRes matches the frame, so sizes are real pixels.
@@ -357,8 +362,9 @@ def mux(scene: Scene, duration: float, lead: float, ffmpeg: Path, silent: Path, 
     video = f"[0:v]subtitles=filename={ass_arg}"
     if scene.badge:
         text = scene.badge.replace(":", r"\:").replace("'", "")
+        font = FONT.as_posix().replace(":", r"\:")
         video += (
-            f",drawtext=text='{text}':fontfile='C\\:/Windows/Fonts/segoeui.ttf':"
+            f",drawtext=text='{text}':fontfile='{font}':"
             f"fontsize=22:fontcolor=white:box=1:boxcolor=0x12181F@0.72:boxborderw=12:"
             f"x=w-tw-34:y=30"
         )
@@ -454,9 +460,13 @@ def main() -> None:
     parser.add_argument("--keep-work", action="store_true")
     args = parser.parse_args()
 
+    if not args.ffmpeg:
+        raise SystemExit("ffmpeg not found; install it, set AF_FFMPEG, or pass --ffmpeg")
     ffmpeg = Path(args.ffmpeg)
     if not ffmpeg.exists():
         raise SystemExit(f"ffmpeg not found: {ffmpeg}")
+    if not FONT.exists():
+        raise SystemExit(f"font not found: {FONT} (set AF_FONT)")
     node = shutil.which("node")
 
     manifest = json.loads((OUT / "audio_manifest.json").read_text(encoding="utf-8"))
