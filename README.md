@@ -51,33 +51,21 @@ A narrated walkthrough video is attached to the
 
 ```mermaid
 flowchart TB
-    subgraph UI["Dashboard — Streamlit :8501"]
-        PAGES["Overview · Campaigns · Agent Traces · ROI Calculator · Review Queue"]
-    end
+    DASH["Streamlit dashboard<br/>localhost:8501"] -->|REST| API["FastAPI<br/>localhost:8000"]
+    API --> R["research"]
+    R --> C["creative strategist"]
+    C --> M["media planner"]
+    M --> X["compliance"]
+    X -->|allowed| H["human review<br/>interrupt"]
+    H -->|approved| K["KPI analytics"]
+    K --> ROI["ROI calculator"]
+    ROI --> O["optimization"]
+    H -.->|rejected, max 3 revisions| C
+    X -.->|blocked| STOP(["auto-blocked, no publish"])
 
-    subgraph API["FastAPI :8000"]
-        EP["/campaigns · /kpis · /traces · /reviews"]
-    end
-
-    subgraph G["LangGraph orchestrator"]
-        direction LR
-        RS[research] --> CR[creative] --> MP[media_planner] --> CO[compliance]
-        CO --> HR{{human_review<br/>interrupt}}
-        HR -->|approved| KA[kpi_analytics] --> RO[roi_calculator] --> OP[optimization]
-        HR -->|rejected| CR
-    end
-
-    subgraph MCP["7 MCP tool servers"]
-        SERVERS["research :9001<br/>ads :9002<br/>analytics :9003<br/>roi :9004<br/>compliance :9005<br/>public_data :9007<br/>linkedin :9012"]
-    end
-
-    PG[(Postgres<br/>rows + audit log + checkpoints)]
-    RD[(Redis<br/>rate limits)]
-
-    UI -->|HTTP| API --> G
-    G --> MCP
-    G --- PG
-    G --- RD
+    API --- PG[("Postgres<br/>campaigns · audit log · checkpoints")]
+    API --- RD[("Redis<br/>rate limits")]
+    API --- MCP["MCP tool servers<br/>research · ads · analytics · roi · compliance · public data · linkedin"]
 ```
 
 Full system design with 13 diagrams: **[docs/DESIGN.md](docs/DESIGN.md)**.
