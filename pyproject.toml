@@ -63,19 +63,19 @@ dashboard = [
 ]
 
 dev = [
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.24.0",
-    "pytest-cov>=5.0.0",
-    "pytest-timeout>=2.3.1",
-    "pytest-mock>=3.14.0",
-    "respx>=0.21.0",
-    "fakeredis>=2.24.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "pytest-cov>=7.1.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-mock>=3.17.0",
+    "respx>=0.23.1",
+    "fakeredis>=2.40.0",
     "curl_cffi>=0.7.0",
-    "embedded-postgres>=18.0.0",
+    "embedded-postgres>=18.6.3",
     # Pinned to a minor series: ruff's formatter output changes between
     # releases, and a floating version turns CI into a formatting coin-flip.
-    "ruff>=0.17.3,<0.18",
-    "mypy>=1.11.0",
+    "ruff>=0.17.5,<0.18",
+    "mypy>=2.4.1",
 ]
 
 [project.scripts]
