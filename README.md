@@ -65,7 +65,7 @@ flowchart TB
 
     API --- PG[("Postgres<br/>campaigns · audit log · checkpoints")]
     API --- RD[("Redis<br/>rate limits")]
-    API --- MCP["MCP tool servers<br/>research · ads · analytics · roi · compliance · public data · linkedin"]
+    API --- MCP["MCP tool servers<br/>research · ads · analytics · ROI · compliance<br/>public data · LinkedIn · Google Ads"]
 ```
 
 Full system design with 13 diagrams: **[docs/DESIGN.md](docs/DESIGN.md)**.
