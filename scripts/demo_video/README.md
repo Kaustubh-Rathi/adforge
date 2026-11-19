@@ -112,9 +112,9 @@ plan). This two-pass encode produced 7.72 MB at 1280x720:
 
 ```powershell
 ffmpeg -y -i out/adforge-demo.mp4 -vf "scale=1280:720" -c:v libx264 -preset slow `
-  -b:v 195k -maxrate 240k -bufsize 480k -pass 1 -an -f null NUL
+  -b:v 195k -maxrate 240k -bufsize 480k -pass 1 -passlogfile out/ffmpeg2pass -an -f null NUL
 ffmpeg -y -i out/adforge-demo.mp4 -vf "scale=1280:720" -c:v libx264 -preset slow `
-  -b:v 195k -maxrate 240k -bufsize 480k -pass 2 `
+  -b:v 195k -maxrate 240k -bufsize 480k -pass 2 -passlogfile out/ffmpeg2pass `
   -c:a aac -b:a 64k -ac 1 -movflags +faststart out/adforge-demo-inline.mp4
 ```
 
