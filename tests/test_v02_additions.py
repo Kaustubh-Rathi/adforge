@@ -137,6 +137,10 @@ class TestAdsMcpPermissions:
 
 
 class TestPublicDataMcp:
+    # These three call public APIs for real. They live in the `live` tier so a
+    # shared CI runner's rate limit (or a vendor outage) cannot fail the unit
+    # gate; the mocked parsing paths are covered in test_public_data.py.
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_appstore_search_returns_real_data(self):
         """iTunes Search API is public + requires no auth — should return real apps."""
@@ -146,6 +150,7 @@ class TestPublicDataMcp:
         assert "apps" in data
         assert data.get("country") == "us"
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_ipinfo_lookup_works_without_token(self):
         """IPInfo returns limited data without a token but doesn't error."""
@@ -156,6 +161,7 @@ class TestPublicDataMcp:
         # Without token, ipinfo may return city/country — depends on their rate limit
         assert "country" in data or "error" in data
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_github_repo_stats_returns_real_data(self):
         """GitHub public API requires no auth (60/hr/IP limit)."""
