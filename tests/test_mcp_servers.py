@@ -76,13 +76,24 @@ class TestResearchMcp:
         assert "no simulated results" in data["error"]
 
     @pytest.mark.asyncio
-    async def test_keyword_clusters_returns_n_keywords(self):
+    async def test_keyword_clusters_returns_n_keywords(self, monkeypatch):
+        # Google Suggest is a live endpoint; mock the transport so the unit
+        # tier stays hermetic (a CI runner with no egress must still pass).
+        async def fake_suggest(query: str, n: int) -> list[str]:
+            assert query == "project management"
+            return ["project management software", "project management tools"][:n]
+
+        monkeypatch.setattr(research, "_google_suggest", fake_suggest)
         result = await research.keyword_clusters(
             "project management", n=10, headers={"X-AdForge-Tenant": "acme"}
         )
         data = json.loads(result)
-        assert len(data["clusters"]) <= 10
+        assert data["clusters"] == [
+            "project management software",
+            "project management tools",
+        ]
         assert data["seed"] == "project management"
+        assert data["source"] == "google_suggest"
 
 
 class TestRoiMcp:
