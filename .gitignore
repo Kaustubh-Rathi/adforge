@@ -29,9 +29,13 @@ logs/
 
 # Local demo artifacts (run dumps, browser screenshots, scratch)
 # DEMO_SCRIPT.md stays tracked - it is the demo runbook, not an artifact.
+# docs/assets/ is the curated, tracked set used by README.
 .demo/tmp/
 .demo/screenshots/
+.demo/shots*/
 .demo/*.json
+*.mp4
+*.webm
 
 # Credentials
 creds/*.json

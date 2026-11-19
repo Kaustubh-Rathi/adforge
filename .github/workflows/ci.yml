@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel a superseded run on the same ref instead of burning minutes on it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Deterministic, dependency-free environment for the unit tier. Real
+  # credentials are never available on a fork PR, so nothing may depend on them.
+  APP_ENV: test
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  lint:
+    name: lint (ruff + mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e ".[dev,dashboard]"
+
+      - name: ruff check
+        run: ruff check adforge tests
+
+      - name: ruff format
+        run: ruff format --check adforge tests
+
+      - name: mypy (strict)
+        run: mypy adforge
+
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e ".[dev,dashboard]"
+
+      - name: Unit tier
+        # No Docker, no DB, no network: fakeredis + a scripted LLM double.
+        run: pytest -m "not integration and not live" --cov=adforge --cov-report=term-missing --cov-fail-under=90
+
+  integration:
+    name: integration (embedded postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e ".[dev,dashboard]"
+
+      - name: Integration tier
+        # embedded-postgres downloads and starts a throwaway server, so no
+        # service container is needed here either.
+        run: >
+          pytest -m "integration and not live"
+          --cov=adforge.api --cov=adforge.graph --cov=adforge.storage
+          --cov=adforge.mcp_servers.analytics --cov=adforge.guardrails.data_isolation
+          --cov-report=term-missing --cov-fail-under=90

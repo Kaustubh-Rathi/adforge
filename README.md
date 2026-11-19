@@ -1,336 +1,284 @@
 # AdForge
 
-**End-to-end multi-agent ad campaign platform.** Research → design → launch → measure → optimize → decide if it was worth it.
+**End-to-end multi-agent ad campaign platform.** Brief → research → creative →
+media plan → compliance → human approval → measurement → ROI verdict.
 
-Built on LangGraph + Model Context Protocol (MCP), with each agent owning its persona + a dedicated MCP server. Designed to be **vendor-agnostic** and **horizontally distributable** — each MCP server runs in its own container, so no single instance carries the full load.
+Seven specialist agents on a LangGraph state machine. Each one owns a dedicated
+MCP tool server. Every agent boundary is a typed Pydantic contract, and every
+decision lands in an append-only audit log.
+
+![AdForge dashboard overview](docs/assets/dashboard-home.png)
 
 ---
 
 ## What it does
 
-AdForge equips companies to run their ads end-to-end. You give it a campaign brief, it:
+You give it a campaign brief. It:
 
-1. **Researches** the market, competitors, keywords, and audience (Research Agent + Tavily MCP).
-2. **Designs** ad creative concepts across channels (Creative Strategist Agent).
-3. **Plans media** — channel mix, budget split, bidding (Media Planner Agent).
-4. **Reviews compliance** — hard-blocks prohibited content, requires disclosures (Compliance Agent + PolicyEnforcer).
-5. **Pulls live KPIs** from Google / Meta / LinkedIn / TikTok (KPI/Analytics Agent + googleads/google-ads-mcp + Pipeboard MCP).
-6. **Calculates ROI** — ROAS, CPA, payback, recommendation (ROI Calculator Agent).
-7. **Suggests optimizations** — reallocate budget based on live KPIs (Optimization Loop Agent).
+1. **Researches** the market, competitors, keywords and audience — from free,
+   keyless public sources (Wikipedia, DuckDuckGo/Bing, Google Trends, SEC
+   EDGAR, Hacker News, Reddit, StackExchange, App Store, IPInfo).
+2. **Designs** ad creative concepts with A/B variants, held to per-channel
+   character limits.
+3. **Plans media** — channel mix, budget split, bidding strategy, targeting,
+   flight dates.
+4. **Reviews compliance** — `PolicyEnforcer` hard-blocks prohibited content and
+   requires disclosures.
+5. **Pauses for a human.** Nothing is published until a named reviewer approves.
+6. **Pulls KPIs** and computes ROAS, CPA, payback and net profit from raw rows.
+7. **Proposes optimizations** — scale, optimize, pause or kill, with a written
+   rationale naming the biggest drag.
 
-The dashboard answers the only question that matters: **was it worth it?**
+The dashboard answers one question: **was it worth it?**
+
+---
+
+## See it
+
+| | |
+|---|---|
+| ![Campaigns](docs/assets/dashboard-campaigns.png) | ![Agent traces](docs/assets/dashboard-traces.png) |
+| **Campaigns** — brief in, seven agents out, spend tracked | **Agent Traces** — every run's input, output, tokens and audit events |
+| ![ROI](docs/assets/dashboard-roi.png) | ![Review queue](docs/assets/dashboard-review.png) |
+| **ROI Calculator** — the verdict, per channel | **Review Queue** — the human gate before anything launches |
+
+A narrated walkthrough video is attached to the
+[`demo-v0.1` release](https://github.com/Kaustubh-Rathi/adforge/releases).
 
 ---
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    subgraph UI["Dashboard — Streamlit :8501"]
+        PAGES["Overview · Campaigns · Agent Traces · ROI Calculator · Review Queue"]
+    end
+
+    subgraph API["FastAPI :8000"]
+        EP["/campaigns · /kpis · /traces · /reviews"]
+    end
+
+    subgraph G["LangGraph orchestrator"]
+        direction LR
+        RS[research] --> CR[creative] --> MP[media_planner] --> CO[compliance]
+        CO --> HR{{human_review<br/>interrupt}}
+        HR -->|approved| KA[kpi_analytics] --> RO[roi_calculator] --> OP[optimization]
+        HR -->|rejected| CR
+    end
+
+    subgraph MCP["7 MCP tool servers"]
+        SERVERS["research :9001<br/>ads :9002<br/>analytics :9003<br/>roi :9004<br/>compliance :9005<br/>public_data :9007<br/>linkedin :9012"]
+    end
+
+    PG[(Postgres<br/>rows + audit log + checkpoints)]
+    RD[(Redis<br/>rate limits)]
+
+    UI -->|HTTP| API --> G
+    G --> MCP
+    G --- PG
+    G --- RD
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                       Streamlit dashboard (8501)              │
-│  Campaigns │ Agent Traces │ ROI Calculator                    │
-└───────────────────────────────┬──────────────────────────────┘
-                                │ HTTP
-┌───────────────────────────────▼──────────────────────────────┐
-│                       FastAPI (8000)                          │
-│  /campaigns │ /kpis │ /traces                                  │
-└───────────────────────────────┬──────────────────────────────┘
-                                │
-┌───────────────────────────────▼──────────────────────────────┐
-│           LangGraph orchestrator (7-agent graph)              │
-│  research → creative → media → compliance → kpi →             │
-│  roi → optimization                                           │
-│  + Postgres checkpointer for resumable runs                   │
-└──┬─────────┬──────────┬──────────┬──────────┬─────────────────┘
-   │         │          │          │          │
-   ▼         ▼          ▼          ▼          ▼
-┌──────┐ ┌──────┐ ┌──────────┐ ┌──────┐ ┌─────────────┐
-│resear│ │ ads  │ │analytics │ │ roi  │ │ compliance  │
-│ MCP  │ │ MCP  │ │ MCP      │ │ MCP  │ │ MCP         │
-│:9001 │ │:9002 │ │:9003     │ │:9004 │ │:9005        │
-└──┬───┘ └──┬───┘ └──────────┘ └──────┘ └─────────────┘
-   │        │
-   │        ├─ googleads/google-ads-mcp (official, container :9006)
-   │        ├─ Pipeboard remote MCP family (Meta + TikTok + Snap + Reddit)
-   │        └─ adforge/mcp_servers/ads/linkedin.py (standalone MCP, :9012)
-   │
-   └─ Tavily web search API
-```
 
-See **[docs/DESIGN.md](docs/DESIGN.md)** for the full system design with 13 mermaid diagrams (architecture, agent graph, HITL sequence, MCP topology, permissions lifecycle, multi-tenant isolation, storage ERD, deployment topology, repo structure, GobbleCube plan summary) and **[docs/RESEARCH.md](docs/RESEARCH.md)** for the open-source dependency audit (what we integrate vs what we build).
-
----
-
-## Tech stack
-
-| Layer | Choice | Why |
-|-------|--------|-----|
-| Orchestration | LangGraph | Stateful multi-agent graphs; native Postgres checkpointer |
-| Tools / MCP | Official `mcp[cli]` SDK + `langchain[mcp]` adapter | Industry standard, post-migration |
-| LLM (default) | Z.ai GLM-4.6 | Cost-effective, fast; swap to OpenAI / Anthropic via env |
-| Storage | Postgres (async SQLAlchemy) + Redis | Append-only audit log; LangGraph state cache |
-| API | FastAPI + Uvicorn | Async, typed, OpenAPI docs out of the box |
-| Dashboard | Streamlit + Plotly | Quick to iterate; enough for v1 |
-| Ad platforms | googleads/google-ads-mcp + Pipeboard MCP family + custom LinkedIn wrapper | See docs/RESEARCH.md |
+Full system design with 13 diagrams: **[docs/DESIGN.md](docs/DESIGN.md)**.
+Dependency audit (what we integrate vs. build): **[docs/RESEARCH.md](docs/RESEARCH.md)**.
 
 ---
 
 ## Quick start
 
-### Prerequisites
+`make` is not required. On Windows use the PowerShell blocks below; on Linux/macOS
+either path works. Every command in **[docs/RUNNING.md](docs/RUNNING.md)** was
+executed on a real machine before being written down.
 
-- Python 3.11+
-- Docker + Docker Compose
-- **Zero paid API keys required for the default path** — AdForge runs end-to-end with DuckDuckGo + Wikipedia + HN + Reddit + StackExchange + AppStore + IPInfo + Google Trends + SEC EDGAR + Jina Reader (all free, no auth) and the Coarena free model API (OpenAI-compatible, `$5/day`). Missing ad-platform credentials produce explicit configuration errors; they never fabricate data.
+**Prerequisites:** Python 3.11+, Docker Desktop.
 
-### 1. Clone + install
-
-```bash
-git clone https://github.com/your-org/adforge.git
+```powershell
+git clone https://github.com/Kaustubh-Rathi/adforge.git
 cd adforge
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev,dashboard]"
 cp .env.example .env
-# Edit .env — set APP_SECRET before enabling live writes. The default
-# Coarena free LLM endpoint needs no paid key.
-make install
 ```
 
-### 2. Boot Postgres + Redis
+Set `APP_SECRET` and `LLM_API_KEY` in `.env` (a free
+[Coarena](https://coarena.ai) key is enough). Then:
 
-```bash
-make db-up
-make seed  # dev/test only: loads 3 example campaigns, KPI rows marked is_mock
+```powershell
+# 1. Postgres + Redis, then seed three example campaigns (idempotent).
+docker compose up -d postgres redis
+.\.venv\Scripts\python.exe -m adforge.storage.seed
+
+# 2. Terminal 1 — API
+.\.venv\Scripts\python.exe -m uvicorn adforge.api.main:app --host 127.0.0.1 --port 8000 --reload
+
+# 3. Terminal 2 — dashboard
+.\.venv\Scripts\python.exe -m streamlit run adforge/dashboard/Overview.py --server.port=8501
 ```
 
-`make seed` is idempotent — re-running it rewrites the same campaigns instead of
-duplicating them, so a demo environment can be reset safely. Each example lives
-in its own tenant (`tenant_acme_saas`, `tenant_bloom_bistro`,
-`tenant_vertex_audio`); use the dashboard's sidebar **Tenant** switcher to view
-them.
+Open <http://localhost:8501>. API docs at <http://localhost:8000/docs>.
 
-### 3. Run the API + dashboard
+Whole stack in one command instead:
 
-In one terminal:
-```bash
-make run-api    # http://localhost:8000
+```powershell
+docker compose up -d --build
 ```
-
-In another:
-```bash
-make run-dashboard  # http://localhost:8501
-```
-
-The dashboard is five pages: **Overview** (architecture and the live operations
-board), **Campaigns**, **Agent Traces**, **ROI Calculator** and **Review Queue**.
-All component CSS lives in `adforge/dashboard/theme.py`; pages compose the
-`af_*` helpers instead of shipping page-local `<style>` blocks, and the Mermaid
-diagrams scale to fit their frame. The entrypoint is `Overview.py` so the
-sidebar label reads "Overview" rather than "app".
-
-### 4. (Or) Boot the whole stack via docker-compose
-
-```bash
-make docker-up
-make docker-logs  # tail logs
-```
-
-This brings up Postgres, Redis, all 7 local MCP servers, the official googleads/google-ads-mcp container, the FastAPI app, and the Streamlit dashboard — distributed across containers as designed.
 
 ---
 
 ## Usage
 
-### Create a campaign
+### Through the dashboard
 
-```bash
-curl -X POST http://localhost:8000/campaigns \
-  -H "X-AdForge-Tenant: acme" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Q1 SaaS launch",
-    "brief": {
-      "product_name": "Acme CRM",
-      "product_description": "Lightweight CRM for B2B sales teams.",
-      "target_audience": "Sales managers at 20-200 person B2B SaaS companies.",
-      "budget_usd": 25000,
-      "duration_days": 30,
-      "business_objective": "conversion",
-      "channels_hint": ["google", "linkedin"]
-    }
-  }'
+1. **Campaigns** → *Create new campaign* → fill the brief → **Run agent graph**.
+2. The run pauses at the human gate. **Review Queue** → read the packet →
+   approve as a reviewer from `APP_REVIEWER_ALLOWLIST`.
+3. **Agent Traces** and **ROI Calculator** now show the completed campaign.
+
+A full run takes 1–3 minutes on the free LLM tier.
+
+### Through the API
+
+```powershell
+$h = @{ "X-AdForge-Tenant" = "demo_tenant"; "Content-Type" = "application/json" }
+
+$body = @{
+  name  = "Q1 SaaS launch"
+  brief = @{
+    product_name        = "Acme CRM"
+    product_description = "Lightweight CRM for B2B sales teams."
+    target_audience     = "Sales managers at 20-200 person B2B SaaS companies."
+    budget_usd          = 25000
+    duration_days       = 30
+    business_objective  = "conversion"
+    channels_hint       = @("google", "linkedin")
+  }
+} | ConvertTo-Json -Depth 5
+
+$c = Invoke-RestMethod -Method Post http://127.0.0.1:8000/campaigns -Headers $h -Body $body
+
+Invoke-RestMethod -Method Post "http://127.0.0.1:8000/campaigns/$($c.id)/run" `
+  -Headers @{ "X-AdForge-Tenant" = "demo_tenant"; "X-AdForge-Campaign" = $c.id }
 ```
 
-### Run the agent graph
+Every request needs `X-AdForge-Tenant`. There is no ambient tenant.
 
-```bash
-curl -X POST http://localhost:8000/campaigns/<campaign_id>/run \
-  -H "X-AdForge-Tenant: acme" \
-  -H "X-AdForge-Campaign: <campaign_id>"
-```
-
-This invokes all 7 agents in sequence: research → creative → media_planner → compliance → kpi_analytics → roi_calculator → optimization. Returns the final state with every agent's payload + usage stats.
-
-### View results
-
-Open `http://localhost:8501` and navigate to:
-- **Campaigns** — list + create + run
-- **Agent Traces** — inspect every agent's input, output, usage, errors, audit events
-- **ROI Calculator** — per-channel ROAS, CPA, net profit, recommendation
+Full endpoint list and a PowerShell end-to-end: **[docs/RUNNING.md](docs/RUNNING.md)**.
 
 ---
 
 ## Guardrails
 
-AdForge is opinionated about safety. Every agent invocation passes through:
+Every agent invocation passes through this package. Agents cannot bypass it.
 
-1. **Typed contracts** (Pydantic) — input + output validated; broken agents can't corrupt downstream state.
-2. **Tenant isolation** — `TenantScope` is injected into every DB query, MCP call, and cache key. One tenant's data never crosses another.
-3. **Rate limiting** — per-tenant + per-campaign token buckets in Redis. One runaway campaign cannot starve others.
-4. **Append-only audit log** — every LLM call, MCP tool call, and guardrail firing is persisted to `audit_events`. No UPDATE path exists.
-5. **Compliance gate** — `PolicyEnforcer` hard-blocks prohibited terms (tobacco, weapons, financial claims without disclosure). The orchestrator will not invoke the publish tool without `approved=True`.
-6. **Cost ceiling** — `guardrails_max_llm_calls_per_campaign` (default 200) bounds token spend per campaign.
+1. **Typed contracts** — input and output validated against Pydantic models; a
+   broken agent cannot corrupt downstream state.
+2. **Tenant isolation** — `TenantScope` is threaded through every DB query, MCP
+   call and cache key. Cross-tenant reads are covered by tests that assert they fail.
+3. **Rate limiting** — per-tenant + per-campaign token buckets in Redis.
+4. **Append-only audit log** — every LLM call, MCP tool call and guardrail
+   firing is persisted. No UPDATE path exists.
+5. **Compliance gate** — `PolicyEnforcer` hard-blocks prohibited terms. The
+   orchestrator will not reach the publish tool without `approved=True`.
+6. **Cost ceiling** — `GUARDRAILS_MAX_LLM_CALLS_PER_CAMPAIGN` (default 200)
+   bounds spend per campaign.
 
-These guardrails **cannot be disabled in prod or staging**. In dev/test you can set `APP_DISABLE_GUARDRAILS=true` to bypass rate limits for local iteration — the contracts + isolation still apply.
-
----
-
-## Open-source dependencies
-
-AdForge integrates rather than reinvents. See **[docs/RESEARCH.md](docs/RESEARCH.md)** for the full audit. Summary:
-
-| Used as-is | For |
-|-----------|-----|
-| `googleads/google-ads-mcp` | Official Google Ads read-only MCP |
-| `pipeboard-co/meta-ads-mcp` family | Meta + TikTok + Snap + Reddit (OAuth, free tier) |
-| `langchain[mcp]` (post-migration) | MCP ↔ LangGraph bridge (`MultiServerMCPClient`) |
-| `langgraph-checkpoint-postgres` + `langgraph-checkpoint-redis` | Resumable agent state |
-| `aws-samples/langgraph-multi-agent` | Architectural reference (planner + executor split) |
-
-| Built by us | Because |
-|------------|---------|
-| 7 local MCP servers | AdForge domain logic (research, ads, analytics, roi, compliance, public data, LinkedIn) |
-| 7 agents | The novel multi-agent ad orchestration |
-| Guardrails layer | No upstream package handles tenant isolation + audit + compliance |
-| LinkedIn MCP wrapper | No official LinkedIn MCP exists (as of Oct 2026) |
-| FastAPI + Streamlit app | Application surface |
+These are enforced by default; disabling them is refused outside dev/test.
 
 ---
 
-## Configuration
+## Tech stack
 
-All configuration is env-driven via `adforge/config.py`. See `.env.example` for the full list. Critical settings:
-
-| Env var | Default | Purpose |
-|---------|---------|---------|
-| `APP_ENV` | `dev` | `dev`/`test`/`staging`/`prod` — affects guardrail strictness |
-| `LLM_PROVIDER` | `opencode` | `opencode`/`glm`/`openai`/`anthropic` |
-| `LLM_BASE_URL` | `https://coarena.ai/api/v1` | OpenAI-compatible endpoint (Coarena free tier by default) |
-| `LLM_MODEL` | `gpt-6-luna` | Model ID served by `LLM_BASE_URL`; fallback `gemini-3-8-flash` |
-| `LLM_API_KEY` | `coa_...` | Bearer token; Coarena free key (`$5/day`, 30 req/min, 2 concurrent) |
-| `ZAI_API_KEY` | (empty) | Z.ai GLM API key — only needed when `LLM_PROVIDER=glm` |
-| `DATABASE_URL` | auto-built from PG_* vars | Postgres connection string |
-| `REDIS_URL` | auto-built | Redis connection string |
-| `PIPEBOARD_API_TOKEN` | (empty) | If set, enables Meta + TikTok live data |
-| `TAVILY_API_KEY` | (empty) | If set, enables real web search in Research agent |
-| `GOOGLE_APPLICATION_CREDENTIALS` | (empty) | Path to GCP service-account JSON for google-ads-mcp |
-| `GUARDRAILS_MAX_LLM_CALLS_PER_CAMPAIGN` | `200` | Hard ceiling on LLM spend per campaign |
-| `GUARDRAILS_REQUIRE_COMPLIANCE_APPROVAL` | `true` | Block publish calls without Compliance verdict |
-
-When a credential or endpoint is absent, AdForge fails explicitly with a configuration error. It never substitutes fabricated ad performance or a fake publish success. Seeded demo data exists only in `dev`/`test`, is marked `is_mock=true`, and is refused in staging/prod.
-
-### Coarena free model API endpoint
-
-The default configuration points at the OpenAI-compatible Coarena free gateway
-(`LLM_PROVIDER=opencode`, `LLM_BASE_URL=https://coarena.ai/api/v1`). No paid key
-is required — Coarena provides `$5/day` of model usage, `30 req/min`, and
-`2 concurrent` requests. Quota exhaustion returns HTTP 429
-(`concurrency_limit_exceeded` / `insufficient_quota`) with `retry-after`; the
-live test skips on that response instead of failing. The opencode provider's
-opencode.ai-specific behaviours (TLS fingerprinting, session headers, `<env>`
-block) are hostname-gated, so any OpenAI-compatible base URL works unchanged.
-
-### MCP servers
-
-All first-party MCP servers start over stdio by default and are discovered by
-`adforge.mcp_servers.client`:
-
-```bash
-python -m adforge.mcp_servers.runner research   # web_search, wikipedia, ...
-python -m adforge.mcp_servers.runner ads        # composite: LinkedIn + Google + Pipeboard
-python -m adforge.mcp_servers.runner analytics  # persist/query/aggregate KPIs
-python -m adforge.mcp_servers.runner roi        # ROAS, CPA, payback
-python -m adforge.mcp_servers.runner compliance # policy evaluation
-python -m adforge.mcp_servers.runner linkedin   # LinkedIn ad analytics
-python -m adforge.mcp_servers.runner public_data # 12 free public-data tools
-```
-
-Set `MCP_ENABLED=false` to run the graph without spawning MCP subprocesses;
-agents then run LLM-only and no MCP tool can be invoked. External integrations
-(google-ads-mcp, Pipeboard) are enabled by setting the credentials documented in
-`.env.example`.
+| Layer | Choice |
+|---|---|
+| Orchestration | LangGraph + Postgres checkpointer (durable HITL resume) |
+| Tools | Official `mcp` SDK + `langchain-mcp-adapters` |
+| LLM | Any OpenAI-compatible endpoint (default: Coarena free tier); plus Anthropic and Z.ai GLM adapters |
+| Storage | Postgres (async SQLAlchemy) + Redis |
+| API | FastAPI + Uvicorn |
+| Dashboard | Streamlit + Plotly |
+| Ad platforms | `googleads/google-ads-mcp`, Pipeboard MCP family, custom LinkedIn wrapper |
 
 ---
 
 ## Development
 
-```bash
-make lint              # ruff check + mypy
-make test-unit         # unit tier, fails under 90% coverage
-make test-integration  # embedded Postgres, fails under 90% coverage
-make test              # everything (live tests skip without opt-in)
-
-# Live tests are opt-in and call the configured LLM/ad-platform endpoints.
-# They skip automatically when credentials or free-tier quota are unavailable.
-ADFORGE_LIVE_TESTS=1 pytest -m live --timeout=900
-
-# Run the agent eval suite against the configured live LLM + ad APIs
-python -m adforge.utils.eval_runner
+```powershell
+.\\.venv\\Scripts\\ruff.exe check adforge tests          # lint
+.\\.venv\\Scripts\\ruff.exe format --check adforge tests
+.\\.venv\\Scripts\\mypy.exe adforge                       # strict
+.\\.venv\\Scripts\\python.exe -m pytest -m "not integration and not live"   # unit
+.\\.venv\\Scripts\\python.exe -m pytest -m "integration and not live"       # embedded Postgres
 ```
 
-Test tiers:
+| Tier | Services | Count |
+|---|---|---|
+| Unit | fakeredis + scripted LLM double; no DB, no network | 647 |
+| Integration | `embedded-postgres`, no Docker needed | 44 |
+| Live | opt-in via `ADFORGE_LIVE_TESTS=1`; real LLM + ad APIs | opt-in |
 
-| Tier | Marker | Services | Scope |
-|------|--------|----------|-------|
-| Unit | *(default)* | fakeredis, scripted LLM, no DB | all of `adforge` |
-| Integration | `@pytest.mark.integration` | embedded PostgreSQL 18 | `api`, `graph`, `storage`, `mcp_servers.analytics`, `guardrails.data_isolation` |
-| Live | `@pytest.mark.live` | opencode.ai + ad platforms | opt-in via `ADFORGE_LIVE_TESTS=1` |
-
-Integration tests do not need Docker: `embedded-postgres` starts a throwaway
-server and applies `scripts/sql/init.sql`; Redis calls use `fakeredis` and fail
-open when unavailable.
-
-The opt-in end-to-end test (`tests/test_live_e2e.py`) runs the full API + graph
-against the configured real LLM and embedded PostgreSQL, pauses at HITL, then
-approves and resumes to `live`. It consumes several free-tier LLM calls:
-
-```bash
-ADFORGE_LIVE_TESTS=1 pytest tests/test_live_e2e.py --timeout=900
-```
+CI runs lint, both tiers on Python 3.11 and 3.12, with a 90% coverage gate
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ### Add a new agent
 
-See **[docs/ADDING_AN_AGENT.md](docs/ADDING_AN_AGENT.md)** for the step-by-step guide. Short version:
-
 1. Create `adforge/agents/<name>/` with `__init__.py`, `persona.py`, `agent.py`.
 2. Subclass `BaseAgent` — override `name`, `persona`, `build_messages`, `parse_response`.
-3. Add a node to `adforge/graph/state.py`.
-4. Wire it into the graph edges.
-5. Add a test in `tests/test_agents.py`.
+3. Add a node to `adforge/graph/state.py` and wire the edges.
 
-### Add a new MCP server
+Details in **[docs/ADDING_AN_AGENT.md](docs/ADDING_AN_AGENT.md)**.
 
-1. Create `adforge/mcp_servers/<name>.py` exposing a `mcp = FastMCP("adforge-<name>")` instance.
-2. Register it in `adforge/mcp_servers/runner.py` `SERVERS` dict.
-3. Add a service to `docker-compose.yml`.
-4. Add a port + URL to `adforge/config.py`.
-5. Register it in `adforge/mcp_servers/client.py::_build_client`.
+---
+
+## Use cases and honest limits
+
+**[docs/USE_CASES.md](docs/USE_CASES.md)** covers what AdForge is good for — B2B
+launch planning, pre-flight compliance, agency multi-tenancy, "was it worth it"
+reporting — and, in the same document, where it is the wrong tool.
+
+Read the limits before adopting it:
+
+- **There is no chat interface.** You drive it through the dashboard or REST API.
+- **No ad-platform credentials ship with it.** Dev/test uses deterministic mock
+  KPIs, every row marked `is_mock=true` and labelled in the UI. Live spend needs
+  real Google/Meta/LinkedIn credentials.
+- **The compliance check is a first-pass filter, not a legal opinion.** Keep a
+  human in the loop; the HITL gate exists for that reason.
+- **Tenant identity is a header, trusted from the caller.** Put it behind your
+  own auth before exposing it to third parties.
+- **It is an operator tool.** Setup needs Python, Docker and an `.env` file.
+- Agent LLM prompts are tuned for ad copy. This is not a general reasoning benchmark.
+
+---
+
+## Configuration
+
+All configuration is env-driven via `adforge/config.py`. See
+[`.env.example`](.env.example) for the complete list. The settings that change
+behaviour most:
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `APP_ENV` | `dev` | `dev` / `test` / `staging` / `prod` — affects guardrail strictness |
+| `APP_SECRET` | (empty) | HMAC key for HITL approval tokens. **Required** outside dev |
+| `APP_REVIEWER_ALLOWLIST` | (empty) | Comma-separated reviewer emails authorised to approve |
+| `LLM_PROVIDER` | `opencode` | `opencode` / `glm` / `openai` / `anthropic` |
+| `LLM_BASE_URL` | `https://coarena.ai/api/v1` | Any OpenAI-compatible endpoint |
+| `LLM_MODEL` | `gpt-6-luna` | Fallback: `gemini-3-8-flash` |
+| `LLM_API_KEY` | (empty) | Free Coarena key: `$5/day`, 30 req/min, 2 concurrent |
+| `DATABASE_URL` | auto from `POSTGRES_*` | Postgres connection string |
+| `REDIS_URL` | auto from `REDIS_*` | Redis connection string |
+| `CHECKPOINTER_BACKEND` | `postgres` | `postgres` / `memory` / `none` |
+| `MCP_ENABLED` | `true` | `false` runs agents LLM-only, with no tool access |
+| `GUARDRAILS_MAX_LLM_CALLS_PER_CAMPAIGN` | `200` | Hard ceiling on LLM spend per campaign |
+
+When a credential or endpoint is missing, AdForge fails with an explicit
+configuration error. It never substitutes fabricated ad performance or a fake
+publish success.
 
 ---
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
-
----
-
-## Status
-
-AdForge is in **active development** (v0.1.x). The architecture + guardrails + agent contracts are stable; the agent LLM calls are wired but use mock data when no API keys are present. See the per-agent TODOs in `docs/ARCHITECTURE.md` for what's next.
+MIT — see [LICENSE](LICENSE).
