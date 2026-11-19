@@ -87,9 +87,11 @@ jobs:
 
       - name: Integration tier
         # embedded-postgres downloads and starts a throwaway server, so no
-        # service container is needed here either.
+        # service container is needed here either. This tier reports coverage
+        # but does not gate on it: the unit tier is the 90% gate, and these
+        # tests deliberately exercise only the integration seams.
         run: >
           pytest -m "integration and not live"
           --cov=adforge.api --cov=adforge.graph --cov=adforge.storage
           --cov=adforge.mcp_servers.analytics --cov=adforge.guardrails.data_isolation
-          --cov-report=term-missing --cov-fail-under=90
+          --cov-report=term-missing

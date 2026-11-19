@@ -208,8 +208,8 @@ These are enforced by default; disabling them is refused outside dev/test.
 | Integration | `embedded-postgres`, no Docker needed | 44 |
 | Live | opt-in via `ADFORGE_LIVE_TESTS=1`; real LLM + ad APIs | opt-in |
 
-CI runs lint and the unit tier on Python 3.11 and 3.12, and the integration
-tier on 3.11, all with a 90% coverage gate
+CI runs lint and the unit tier (with a 90% coverage gate) on Python 3.11 and
+3.12, and the integration tier on 3.11
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ### Add a new agent

@@ -11,7 +11,6 @@ Public API surface:
 """
 
 import sys as _sys
-from contextlib import suppress as _suppress
 
 # psycopg's async pool (used by LangGraph's Postgres checkpointer) cannot run
 # on Windows' default ProactorEventLoop. Select the selector loop at package
@@ -19,9 +18,11 @@ from contextlib import suppress as _suppress
 if _sys.platform == "win32":  # pragma: no cover - platform-specific
     import asyncio as _asyncio
 
-    with _suppress(AttributeError):
-        # Future Python may remove the policy API; that is not an error here.
-        _asyncio.set_event_loop_policy(_asyncio.WindowsSelectorEventLoopPolicy())
+    # getattr keeps mypy happy on non-Windows, where the policy class and the
+    # platform branch are both absent from the stubs.
+    _policy = getattr(_asyncio, "WindowsSelectorEventLoopPolicy", None)
+    if _policy is not None:
+        _asyncio.set_event_loop_policy(_policy())
 
 __version__ = "0.1.0"
 __all__ = ["__version__"]
