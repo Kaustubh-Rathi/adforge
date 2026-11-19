@@ -42,8 +42,13 @@ The dashboard answers one question: **was it worth it?**
 | ![ROI](docs/assets/dashboard-roi.png) | ![Review queue](docs/assets/dashboard-review.png) |
 | **ROI Calculator** — the verdict, per channel | **Review Queue** — the human gate before anything launches |
 
-A narrated walkthrough video is attached to the
-[`demo-v0.1` release](https://github.com/Kaustubh-Rathi/adforge/releases/tag/demo-v0.1).
+## Watch the demo
+
+https://github.com/user-attachments/assets/8999ed3d-8bd9-4adb-9b54-e74c8b4b35e4
+
+*4:29, narrated. The GitHub player starts muted — click the speaker icon. The
+[full-quality MP4 and SRT](https://github.com/Kaustubh-Rathi/adforge/releases/tag/demo-v0.1)
+are attached to the `demo-v0.1` release.*
 
 ---
 

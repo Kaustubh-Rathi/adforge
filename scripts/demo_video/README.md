@@ -1,7 +1,8 @@
 # Demo video pipeline
 
-Source for the narrated walkthrough attached to the [`demo-v0.1`
-release](https://github.com/Kaustubh-Rathi/adforge/releases/tag/demo-v0.1).
+Source for the narrated walkthrough published with the [`demo-v0.1`
+release](https://github.com/Kaustubh-Rathi/adforge/releases/tag/demo-v0.1) and
+embedded in the repository README.
 
 Everything here is reproducible: the dashboard is recorded live with Playwright,
 the narration is synthesized with edge-tts, and ffmpeg assembles the cut. The
@@ -75,6 +76,7 @@ Output:
 ```
 out/adforge-demo.mp4        the film (H.264 + AAC, 1600x900, 30 fps)
 out/adforge-demo.srt        one sidecar subtitle file for the whole film
+out/adforge-demo-inline.mp4 optional <=10 MB copy for the GitHub player
 out/scenes/<id>.mp4         individual scenes, captions burned in
 out/build/                  intermediate segments, ASS files, concat lists
 ```
@@ -97,3 +99,38 @@ without touching the edit:
 Use digits in narration text (`0.68`, `3600`, `KPI`): edge-tts intermittently
 returns no audio for long spelled-out numerals. `tts.py` retries three times and
 then fails loudly with that hint.
+
+## Publish an inline copy
+
+Release assets are downloads: GitHub serves them with
+`Content-Disposition: attachment`. To get a player in the README, upload a copy
+as an issue attachment and embed the resulting `user-attachments` URL. The
+player starts muted; viewers click the speaker icon.
+
+Compress to fit the attachment limit (10 MB on a free plan, 100 MB on a paid
+plan). This two-pass encode produced 7.72 MB at 1280x720:
+
+```powershell
+ffmpeg -y -i out/adforge-demo.mp4 -vf "scale=1280:720" -c:v libx264 -preset slow `
+  -b:v 195k -maxrate 240k -bufsize 480k -pass 1 -an -f null NUL
+ffmpeg -y -i out/adforge-demo.mp4 -vf "scale=1280:720" -c:v libx264 -preset slow `
+  -b:v 195k -maxrate 240k -bufsize 480k -pass 2 `
+  -c:a aac -b:a 64k -ac 1 -movflags +faststart out/adforge-demo-inline.mp4
+```
+
+On Linux, write the first pass to `/dev/null` instead of `NUL`.
+
+Create the host issue (GitHub CLI 2.105+). The body must reference the video as
+`![](out/adforge-demo-inline.mp4)` in its own paragraph, so `--attach` rewrites
+that reference into the player:
+
+```powershell
+gh issue create --title "Demo video (README player)" `
+  --body-file VIDEO-BODY.md `
+  --attach out/adforge-demo-inline.mp4
+```
+
+Copy the `https://github.com/user-attachments/assets/...` URL from the issue
+body into the README as its own paragraph, then close the issue with a note that
+it hosts the README player and must not be deleted. Keep the full-quality MP4
+and SRT on the release as the download path.
