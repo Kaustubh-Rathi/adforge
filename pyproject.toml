@@ -15,34 +15,34 @@ dependencies = [
     "langchain>=0.3.0",
     "langchain-core>=0.3.0",
     "langchain-mcp-adapters>=0.1.0",   # MCP <-> LangChain tool bridge
-    "pyyaml>=6.0.1",                   # policy rules + MCP config
+    "pyyaml>=6.0.3",                   # policy rules + MCP config
 
     # --- MCP (official SDK) ---
-    "mcp>=1.0.0",
-    "httpx>=0.27.0",
+    "mcp>=2.3.0",
+    "httpx>=0.28.1",
 
     # --- LLM providers ---
-    "openai>=1.40.0",
-    "anthropic>=0.34.0",
+    "openai>=3.57.0",
+    "anthropic>=2.11.0",
 
     # --- API ---
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.30.0",
-    "pydantic>=2.9.0",
-    "pydantic-settings>=2.5.0",
+    "fastapi>=0.165.0",
+    "uvicorn[standard]>=0.54.0",
+    "pydantic>=2.14.4",
+    "pydantic-settings>=2.16.3",
 
     # --- Storage ---
-    "sqlalchemy[asyncio]>=2.0.34",
-    "asyncpg>=0.29.0",
-    "psycopg[binary,pool]>=3.2.0",    # LangGraph Postgres checkpointer
-    "alembic>=1.13.0",
-    "redis>=5.0.0",
+    "sqlalchemy[asyncio]>=2.1.9",
+    "asyncpg>=0.32.0",
+    "psycopg[binary,pool]>=3.3.9",    # LangGraph Postgres checkpointer
+    "alembic>=1.20.1",
+    "redis>=8.1.0",
 
     # --- Tooling ---
-    "tenacity>=9.0.0",
-    "structlog>=24.4.0",
-    "python-dotenv>=1.0.1",
-    "click>=8.1.0",
+    "tenacity>=9.2.1",
+    "structlog>=26.1.0",
+    "python-dotenv>=1.2.4",
+    "click>=8.5.1",
 ]
 
 [project.optional-dependencies]
@@ -50,16 +50,16 @@ dependencies = [
 # directly, so none of these are required to run the platform. Some (notably
 # linkedin-api -> lxml) have no wheels for newer Python versions.
 platforms = [
-    "google-ads>=24.0.0",
-    "google-auth-oauthlib>=1.2.0",
-    "facebook-business>=21.0.0",
-    "tavily-python>=0.5.0",
+    "google-ads>=35.1.0",
+    "google-auth-oauthlib>=1.5.0",
+    "facebook-business>=27.0.0",
+    "tavily-python>=0.8.5",
 ]
 
 dashboard = [
-    "streamlit>=1.38.0",
-    "plotly>=5.24.0",
-    "pandas>=2.2.0",
+    "streamlit>=1.67.0",
+    "plotly>=7.1.0",
+    "pandas>=3.1.1",
 ]
 
 dev = [
@@ -70,7 +70,7 @@ dev = [
     "pytest-mock>=3.14.0",
     "respx>=0.21.0",
     "fakeredis>=2.24.0",
-    "curl_cffi>=0.7.0",
+    "curl_cffi>=0.17.0",
     "embedded-postgres>=18.0.0",
     # Pinned to a minor series: ruff's formatter output changes between
     # releases, and a floating version turns CI into a formatting coin-flip.
