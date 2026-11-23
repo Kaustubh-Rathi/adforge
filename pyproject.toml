@@ -9,12 +9,12 @@ authors = [{ name = "AdForge Contributors" }]
 
 dependencies = [
     # --- Agent orchestration ---
-    "langgraph>=0.2.50",
-    "langgraph-checkpoint-postgres>=2.0.0",
-    "langgraph-checkpoint-redis>=0.0.5",
-    "langchain>=0.3.0",
-    "langchain-core>=0.3.0",
-    "langchain-mcp-adapters>=0.1.0",   # MCP <-> LangChain tool bridge
+    "langgraph>=1.2.24",
+    "langgraph-checkpoint-postgres>=3.2.1",
+    "langgraph-checkpoint-redis>=0.6.0",
+    "langchain>=1.5.2",
+    "langchain-core>=1.8.4",
+    "langchain-mcp-adapters>=0.3.2",   # MCP <-> LangChain tool bridge
     "pyyaml>=6.0.1",                   # policy rules + MCP config
 
     # --- MCP (official SDK) ---
